@@ -334,9 +334,11 @@ https://docs.google.com/spreadsheets/d/1xy16zcxfLQ3jjUdWAUrzMyoJbKQ3jQkPNidLN4lX
 ## 👥 Thành viên nhóm
 
 | MSSV | Họ và tên | Vai trò |
-|2452xxxx|Trầm Tính Ân|Trưởng nhóm|
-|2452022|Trần Đức Chuẩn|Thành viên|
-|2452xxxx|Chung Hữu Lộc|Thành viên|
+| :--- | :--- | :--- |
+| 2452xxxx | Trầm Tính Ấn | Trưởng nhóm |
+| 2452022 | Trần Đức Chuẩn | Thành viên |
+| 2452xxxx | Chung Hữu Lộc | Thành viên |
+
 ---
 
 <div align="center">
