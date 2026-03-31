@@ -17,7 +17,6 @@
 - [Thực nghiệm & Đánh giá](#-thực-nghiệm--đánh-giá)
 - [Phân tích rủi ro bảo mật](#-phân-tích-rủi-ro-bảo-mật)
 - [Timeline](#-timeline)
-- [Deliverables](#-deliverables)
 - [Thành viên nhóm](#-thành-viên-nhóm)
 
 ---
