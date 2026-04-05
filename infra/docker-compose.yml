@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   # 1. MongoDB lưu trữ Key ID và Content Key
   db:
