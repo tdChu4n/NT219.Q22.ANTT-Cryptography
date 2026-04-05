@@ -1,0 +1,34 @@
+version: '3.8'
+services:
+  # 1. MongoDB lưu trữ Key ID và Content Key
+  db:
+    image: mongo:latest
+    container_name: multimedia-db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  # 2. Backend của Chuẩn (Xác thực & Cấp License)
+  license-server:
+    build:
+      context: ../license-server
+    container_name: license-server
+    depends_on:
+      - db
+    environment:
+      - MONGO_URL=mongodb://db:27017/multimedia
+
+  # 3. CDN/Web Server của Ân (Phân phối nội dung)
+  cdn-sim:
+    build:
+      context: ../cdn-sim
+    container_name: cdn-sim
+    ports:
+      - "8080:80"
+    volumes:
+      # Ánh xạ folder chứa video của Lộc vào Nginx
+      - ../packager/output:/usr/share/nginx/html/video:ro
+
+volumes:
+  mongo-data:
