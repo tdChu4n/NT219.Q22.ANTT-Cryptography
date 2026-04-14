@@ -102,6 +102,19 @@ Dự án này xây dựng một **nền tảng dịch vụ nội dung đa phươ
 | **Watermarking Engine** | Nhúng ID người dùng vào metadata frame; phát hiện qua frame analysis | FFmpeg, OpenCV |
 | **Auth & Logging** | Định danh người dùng, audit logs, monitoring | OAuth2/JWT, Prometheus |
 
+### Kịch bản tấn công và Phòng thủ theo từng khối kiến trúc
+
+Ứng với mỗi công đoạn trong luồng xử lý và phân phối, hệ thống đối mặt với các rủi ro bảo mật khác nhau. Dưới đây là các kịch bản tấn công và cơ chế phòng thủ tương ứng:
+
+| Khối kiến trúc | Kịch bản tấn công (Attack Scenarios) | Phương án phòng thủ & Khắc phục (Defenses & Mitigations) |
+|---|---|---|
+| **1. Ingest & Transcode** | - **Malicious Payload:** Chèn mã độc, khai thác lỗ hổng thư viện xử lý ảnh/video (ví dụ: buffer overflow trong FFmpeg).<br>- **DoS/Bomba zip:** Video đầu vào có độ dài hoặc cấu trúc block bất thường làm cạn kiệt CPU/RAM của server. | - **Sandbox:** Chạy quá trình Transcode trong Docker/Container cô lập với quyền tối thiểu (non-root).<br>- **Sanitization:** Kiểm tra và chuẩn hóa định dạng chặt chẽ, giới hạn kích thước file upload, cấu hình timeout & rate-limiting cho tiến trình. |
+| **2. Package & Encrypt** | - **Key/IV Reuse:** Tái sử dụng IV trong chế độ AES-CTR dẫn đến lỗ hổng two-time pad (dễ dàng XOR khôi phục bản rõ).<br>- **Key Leakage:** Rò rỉ khóa Content Key khi giao tiếp nội bộ chưa an toàn. | - **CSPRNG:** Sinh Random IV ngẫu nhiên và duy nhất bắt buộc cho mỗi segment/rendition.<br>- **Bảo mật Data-in-transit:** Mã hoá giao tiếp nội bộ tới KMS bằng TLS/mTLS; xoá khóa khỏi bộ nhớ thiết bị sau khi thực thi đóng gói xong. |
+| **3. License Server & Auth** | - **Token Theft & Replay:** Đánh cắp JWT token của người dùng hợp lệ để xin cấp quyền giải mã (License).<br>- **License Server DoS:** Gửi hàng loạt yêu cầu xin key rác làm sập server quản lý khóa. | - **Token ngắn hạn (Short-lived JWT):** Sử dụng token có thời gian sống ngắn, và quản lý blacklist/revocation.<br>- **Anti-Replay & Attestation:** Dùng Nonce cho các request, kiểm tra Device ID fingerprint.<br>- **WAF & Rate Limiting:** Giới hạn lượng request từ một IP để chống DoS. |
+| **4. CDN / Edge Cache** | - **Cache Poisoning:** Kẻ tấn công đánh lừa CDN để cache nội dung độc hại (hoặc lỗi) trả về cho mọi ngưởi.<br>- **License Response Caching:** Cấu hình sai khiến Content Key từ License Server bị CDN cache và public. | - **Strict Cache-Control:** Thiết lập header `Cache-Control: no-store, private` tuyệt đối cho mọi endpoint nhận key.<br>- **Signed URLs/Cookies:** Chỉ những client truy cập có token hợp lệ/chữ ký số mới được phép tải file encrypted. |
+| **5. Client / Player** | - **Trích xuất bộ nhớ (Memory Scraping / Screen-rip):** Dump bộ nhớ app/browser để lấy đoạn video đã giải mã thành bản rõ.<br>- **Device Bypass:** Cố tình đưa device đã root, giả lập (emulator) trốn việc giải mã. | - **Hardware-backed DRM:** Yêu cầu sử dụng TEE (Trusted Execution Environment) - Widevine L1. Thiết bị không có TEE (L3) bị hạ cấp độ phân giải (chỉ dùng SD).<br>- **Device Health Check:** Dùng API (Play Integrity / SafetyNet) kiểm chứng HDH toàn vẹn, chặn lập tức máy đã root/jailbreak. |
+| **6. Watermark Engine** | - **Watermark Removal:** Cố tình crop, cắt viền, xoay video, re-encode sang bitrate cực thấp để tẩy sạch ID ẩn.<br>- **Collusion Attack:** Phối hợp các video từ nhiều tài khoản khác nhau để trộn làm nhiễu nhận diện ID. | - **Robust Watermarking:** Tăng cường thuật toán để nhúng phân tán theo cả không gian và thời gian chống các phương pháp làm mờ/làm mất frame.<br>- **A/B Watermarking:** Đổi linh hoạt các segment A/B tại edge hoặc phát playlist định tuyến tạo ra pattern ID vĩnh cửu chống Collusion. |
+
 ---
 
 ## 🛠️ Công nghệ sử dụng
