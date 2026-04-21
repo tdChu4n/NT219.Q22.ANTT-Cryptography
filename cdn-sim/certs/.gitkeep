@@ -1,0 +1,5 @@
+# Thư mục chứa TLS certificate cho cdn-sim.
+# Khi sẵn sàng bật TLS, đặt 2 file sau vào đây:
+#   - fullchain.pem   (chứng chỉ + intermediate)
+#   - privkey.pem     (private key RSA/ECDSA)
+# Sau đó bỏ comment block `server { listen 443 ssl ... }` trong nginx.conf.

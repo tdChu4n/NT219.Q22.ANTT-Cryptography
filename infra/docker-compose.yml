@@ -18,16 +18,19 @@ services:
     environment:
       - MONGO_URL=mongodb://db:27017/multimedia
 
-  # 3. CDN/Web Server của Ân (Phân phối nội dung)
+  # 3. CDN/Web Server của Ân (Phân phối nội dung) — Task T1.6 hardened
   cdn-sim:
     build:
       context: ../cdn-sim
     container_name: cdn-sim
     ports:
-      - "8080:80"
+      - "8080:80"     # HTTP (dev)
+      - "8443:443"    # HTTPS (chuẩn bị TLS — bật khi mount cert)
     volumes:
       # Ánh xạ folder chứa video của Lộc vào Nginx
       - ../packager/output:/usr/share/nginx/html/video:ro
+      # Thư mục cert TLS — đặt fullchain.pem + privkey.pem để kích hoạt HTTPS
+      - ../cdn-sim/certs:/etc/nginx/certs:ro
 
 volumes:
   mongo-data:
