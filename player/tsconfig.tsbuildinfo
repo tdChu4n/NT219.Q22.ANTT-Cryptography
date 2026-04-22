@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/css-modules.d.ts","./src/main.tsx","./src/vite-env.d.ts","./src/components/contentinfo.tsx","./src/components/header.tsx","./src/components/manifestselector.tsx","./src/components/qualitypanel.tsx","./src/components/videoplayer.tsx","./src/hooks/useshakaplayer.ts","./src/mocks/manifests.ts"],"version":"5.9.3"}

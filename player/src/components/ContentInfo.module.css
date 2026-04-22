@@ -1,0 +1,93 @@
+.wrap {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.3rem;
+  box-shadow: var(--shadow);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.2rem;
+  letter-spacing: -0.2px;
+}
+
+.badges {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+
+.badgeFormat {
+  border-color: rgba(91, 140, 255, 0.4);
+  color: #a8c1ff;
+  background: rgba(91, 140, 255, 0.08);
+}
+
+.badgeScheme {
+  border-color: rgba(46, 204, 113, 0.4);
+  color: #86eab1;
+  background: rgba(46, 204, 113, 0.08);
+}
+
+.badgeLocal {
+  border-color: rgba(245, 180, 0, 0.4);
+  color: #ffd767;
+  background: rgba(245, 180, 0, 0.08);
+}
+
+.badgePublic {
+  border-color: rgba(125, 91, 255, 0.4);
+  color: #c0a8ff;
+  background: rgba(125, 91, 255, 0.08);
+}
+
+.desc {
+  margin: 0.5rem 0 1rem 0;
+  color: var(--fg-muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.meta dt {
+  color: var(--fg-muted);
+}
+
+.meta dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.empty {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
