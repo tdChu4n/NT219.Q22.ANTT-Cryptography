@@ -146,20 +146,20 @@ Bởi vì Mật mã học bị giới hạn trước Camera quay lén (Analog Ho
 
 ## 8. Kế hoạch Thực nghiệm & Metrics
 
-### 7.1. Proof of Concept (PoC) Pipeline
+### 8.1. Proof of Concept (PoC) Pipeline
 Đồ án sẽ xây dựng 1 pipeline mô phỏng thực tế (Scale nhỏ gọn):
 1. FFmpeg + Shaka-packager (Cắt CMAF + Mã hóa CENC với Test KIDs).
 2. License Server bằng Node.js giả lập OAuth2, Device Attestation và xuất License.
 3. Nginx đóng vai trò CDN. Shaka Player phát EME trên browser.
 
-### 7.2. Test Tấn công Mật mã & Bảo mật
+### 8.2. Test Tấn công Mật mã & Bảo mật
 | Bài Test | Phương thức | Đánh giá |
 |---|---|---|
 | **Memory Scraping** | Dùng Frida can thiệp memory quá trình giải mã | Thất bại nếu chạy trên môi trường TEE (Widevine L1). Thành công minh họa trên L3. |
 | **Token Replay** | Bắt License Response, truyền cho máy ảo khác | Phải bị Server chặn do mismatch Nonce hoặc Device Attestation. |
 | **IV Reuse** | Cố tình tái sử dụng IV cho 2 đoạn video | Hacker XOR được Ciphertext để lấy ảnh thô. Chứng minh CENC bắt buộc IV unique. |
 
-### 7.3. Thu thập Metrics
+### 8.3. Thu thập Metrics
 - **Performance:** License latency (thời gian trễ khi xin khóa), TTFF (Time-To-First-Frame), mức ngốn CPU khi giải mã AES-CTR.
 - **Security:** Tỉ lệ chống tải lậu thành công (100%), rủi ro lộ khóa.
 
