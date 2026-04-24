@@ -205,17 +205,14 @@ project-root/
 
 ## 12. Timeline & Thành viên
 
-**Timeline Đồ án (12 Tuần):** [Link Spreadsheet](https://docs.google.com/spreadsheets/d/1xy16zcxfLQ3jjUdWAUrzMyoJbKQ3jQkPNidLN4lXorg/edit?gid=0#gid=0)
-- *Tuần 1-4:* Phân tích kiến trúc, setup Ingest & Packager, mã hóa CENC.
-- *Tuần 5-8:* Xây dựng KMS, License Server, giả lập CDN và Tích hợp Player.
-- *Tuần 9-12:* Forensic Watermarking, Security Testing (Frida/Replay) và làm Report.
+**Timeline Đồ án:** [Link Spreadsheet](https://docs.google.com/spreadsheets/d/1w1mKGpv5SPb5p1dqNdZideCGQb87z6QokOSiyGN1Ckk/edit?gid=0#gid=0)
 
 **Nhóm thực hiện:**
 | MSSV | Họ và tên | Vai trò |
 | :--- | :--- | :--- |
-| 2452xxxx | Trầm Tính Ấn | Trưởng nhóm - CENC Crypto, KMS, DRM License |
-| 2452022 | Trần Đức Chuẩn | Thành viên - Packaging, Segmenting, Watermarking |
-| 2452xxxx | Chung Hữu Lộc | Thành viên - CDN Sim, Network Node, Client App |
+| 24520074 | Trầm Tính Ấn | Trưởng nhóm|
+| 24520228 | Trần Đức Chuẩn | Thành viên|
+| 24520975 | Chung Hữu Lộc | Thành viên|
 
 ---
 <div align="center">
