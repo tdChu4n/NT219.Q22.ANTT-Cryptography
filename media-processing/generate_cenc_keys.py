@@ -1,42 +1,57 @@
-import secrets
+import os
 import json
 
-def generate_secure_hex(bytes_length):
-    """Sử dụng CSPRNG để sinh chuỗi hex ngẫu nhiên an toàn."""
-    return secrets.token_hex(bytes_length)
-
-def main():
-    # 1. Content Key (16 Bytes = 128 bit)
-    # Đây là khóa AES-128 dùng để mã hóa video
-    content_key = generate_secure_hex(16)
+def generate_key_rotation_set(num_periods=4):
+    # Cấu hình các file đầu vào (khớp với file bạn đã tạo ở bước trước)
+    video_input = "video_1080p.mp4"
+    audio_input = "audio.m4a"
     
-    # 2. Key ID - KID (16 Bytes = 128 bit)
-    # KID được đính kèm vào phần header (moov box) của video định dạng MP4/DASH.
-    # Player sẽ đọc KID này và gửi yêu cầu lên License Server để xin Content Key tương ứng.
-    kid = generate_secure_hex(16)
+    keys_list = []
+    shaka_keys_parts = []
+
+    print("--- ĐANG SINH 4 BỘ KHÓA CHO KEY ROTATION ---")
     
-    # 3. Initialization Vector - IV (8 hoặc 16 Bytes)
-    # Trong AES-CTR chuẩn CENC, IV thường dùng 8 bytes hoặc 16 bytes.
-    # CHÚ Ý BẢO MẬT: IV phải là DUY NHẤT cho mỗi lần mã hóa (tránh Nonce Reuse).
-    iv = generate_secure_hex(16)
+    for i in range(num_periods):
+        kid = os.urandom(16).hex()
+        key = os.urandom(16).hex()
+        iv = os.urandom(16).hex()
+        
+        keys_list.append({
+            "period": i + 1,
+            "KID": kid,
+            "Key": key,
+            "IV": iv
+        })
+        
+        # Tạo chuỗi tham số cho Shaka Packager
+        # Gán nhãn VIDEO cho cả 4 bộ khóa để xoay vòng
+        shaka_keys_parts.append(f"label=VIDEO:key_id={kid}:key={key}:iv={iv}")
+        
+    # Thêm khóa cho Audio (dùng chung khóa của Period 1)
+    shaka_keys_parts.append(f"label=AUDIO:key_id={keys_list[0]['KID']}:key={keys_list[0]['Key']}:iv={keys_list[0]['IV']}")
 
-    keys_data = {
-        "KID": kid,
-        "Key": content_key,
-        "IV": iv
-    }
-
-    # In ra terminal để dán trực tiếp vào lệnh shaka-packager
-    print("=== THÔNG SỐ TRUYỀN VÀO SHAKA-PACKAGER ===")
-    print(f"--enable_raw_key_encryption")
-    print(f"--keys label=AUDIO:key_id={kid}:key={content_key}:iv={iv}")
-    print(f"--keys label=VIDEO:key_id={kid}:key={content_key}:iv={iv}")
-    print("==========================================\n")
-
-    # Lưu ra file JSON để đồng bộ với License Server
-    with open("license_keys.json", "w") as f:
-        json.dump(keys_data, f, indent=4)
-    print("Đã lưu khóa vào 'license_keys.json'.")
+    # Lưu vào file JSON cho Ân nạp Database
+    with open('license_keys.json', 'w') as f:
+        json.dump(keys_list, f, indent=4)
+    
+    print(f"✔ Đã lưu {num_periods} bộ khóa vào file 'license_keys.json'")
+    print("-" * 50)
+    print("\n[COPY CÂU LỆNH DƯỚI ĐÂY VÀO DOCKER TERMINAL]:\n")
+    
+    # Tạo câu lệnh Shaka hoàn chỉnh
+    keys_param = ",".join(shaka_keys_parts)
+    command = (
+        f"packager \\\n"
+        f"in={video_input},stream=video,init_segment=output/v_init.mp4,segment_template='output/v_$Number$.m4s',drm_label=VIDEO \\\n"
+        f"in={audio_input},stream=audio,init_segment=output/a_init.mp4,segment_template='output/a_$Number$.m4s',drm_label=AUDIO \\\n"
+        f"--enable_raw_key_encryption \\\n"
+        f"--keys {keys_param} \\\n"
+        f"--period_duration_seconds 10 \\\n"
+        f"--protection_scheme cenc \\\n"
+        f"--mpd_output output/manifest_rotation.mpd"
+    )
+    print(command)
+    print("\n" + "-" * 50)
 
 if __name__ == "__main__":
-    main()
+    generate_key_rotation_set()
