@@ -1,0 +1,54 @@
+STT	Sprint	Mã	Tên task	Phụ trách	Deadline	Deliverable / Ghi chú	Trạng thái
+1	S0 Đã xong	T0.1	Nghiên cứu đề + soạn PROPOSAL capstone	Ân, Chuẩn, Lộc	2026-04-05	PROPOSAL DO AN MON HOC.docx	Done
+2	S0 Đã xong	T0.2	Khởi tạo repo + cấu trúc 10 module + .gitignore	Chuẩn	2026-04-05	Repo init (commit d0a9b45)	Done
+3	S0 Đã xong	T0.3	Docker Compose: mongo + license-server + cdn-sim	Ân	2026-04-05	infra/docker-compose.yml (commit deed33e)	Done
+4	S0 Đã xong	T0.4	Nginx CDN-sim base: /video/ serve + /license reverse proxy + CORS	Ân	2026-04-05	cdn-sim/nginx.conf + Dockerfile (deed33e)	Done
+5	S0 Đã xong	T0.5	License Server Express scaffold (GET /license stub)	Ân	2026-04-05	license-server/src/index.js (deed33e)	Done
+6	S0 Đã xong	T0.6	ABR Encoding FFmpeg H.264 — 3 rendition 360p/720p/1080p	Chuẩn	2026-04-14	transcode.sh + transcode.ps1 + 3 file mp4 (c59880a)	Done
+7	S0 Đã xong	T0.7	README chi tiết: ngữ cảnh media + kiến trúc mật mã + cơ chế AES/CENC	Chuẩn	2026-04-14	README.md 590 dòng (ba05b41)	Done
+8	S0 Đã xong	T0.8	Kịch bản tấn công & phòng thủ theo từng khối kiến trúc	Chuẩn	2026-04-15	Section tấn công trong README (ab6ea6c)	Done
+9	S0 Đã xong	T0.9	Kịch bản tấn công User Flow (đăng ký, đăng nhập, session, API/DB)	Chuẩn	2026-04-17	Section User Flow trong README (fae987e)	Done
+10	S0 Đã xong	T0.10	Sắp xếp + căn chỉnh sơ đồ kiến trúc trong README	Ân	2026-04-18	Commit f5c16f4, e02b173, 934fe41	Done
+11	S1 Foundation	T1.1	Họp phân công chi tiết + lock scope + GitHub Projects board	Ân, Chuẩn, Lộc	2026-04-19	Issue tracker + roadmap board	Done
+12	S1 Foundation	T1.2	Cài shaka-packager + Bento4 vào Docker image	Lộc	2026-04-20	Image packager chạy packager --version	Done
+13	S1 Foundation	T1.3	Script sinh Content Key (16B) + KID + IV bằng CSPRNG	Lộc	2026-04-21	packager/scripts/genkey.sh, in HEX + lưu JSON	Done
+14	S1 Foundation	T1.4	Schema MongoDB + migrate init (kids, content_keys_enc, users, entitlements, devices, sessions)	Chuẩn	2026-04-20	database/schema.md + file migrate	Done
+15	S1 Foundation	T1.5	Module JWT issue/verify (HS256 + RS256) cho License Server	Chuẩn	2026-04-21	license-server/src/auth/jwt.js + unit test	Done
+16	S1 Foundation	T1.6	Hardening nginx: Range request, gzip off cho .m4s, chuẩn bị TLS	Ân	2026-04-20	nginx.conf cập nhật + curl Range OK	Done
+17	S1 Foundation	T1.7	Scaffold Player (Vite + Shaka Player) + UI skeleton	Ân	2026-04-21	player/ chạy npm run dev, load manifest mock	Done
+18	S2 Core Crypto	T2.1	Packager CENC AES-128-CTR encrypt 3 rendition + manifest .mpd	Lộc	2026-04-25	output/*.m4s + manifest.mpd có ContentProtection	Done
+19	S2 Core Crypto	T2.2	Kiểm tra box tenc/sinf/pssh bằng mp4dump (Bento4)	Lộc	2026-04-27	Log xác nhận defaultIsProtected=1, PerSampleIVSize=8	Done
+20	S2 Core Crypto	T2.3	Key Rotation 30 phút (4 Period cho video 2h)	Lộc	2026-04-28	Manifest multi Period, 4 Key khác nhau	Done
+21	S2 Core Crypto	T2.4	License Server POST /license (pssh+jwt) + entitlement check Mongo	Chuẩn	2026-04-25	Endpoint 200/403 theo quyền	In Progress
+22	S2 Core Crypto	T2.5	Mã hóa Content Key trong License Response bằng RSA-OAEP	Chuẩn	2026-04-27	encryptKey(pubKey, contentKey) + test vector	In Progress
+23	S2 Core Crypto	T2.6	KMS at-rest AES-256-GCM + nonce chống replay + time-bound	Chuẩn	2026-04-28	license-server/src/kms/ + exp + nonce	Pending
+24	S2 Core Crypto	T2.7	Player Shaka Player load manifest từ CDN (dry-run clear)	Ân	2026-04-25	Video 1080p chạy trong browser	Done
+25	S2 Core Crypto	T2.8	Player EME request → /license → play content mã hóa Widevine L3	Ân	2026-04-28	Demo Chrome play encrypted OK	In Progress
+26	S3 Integration	T3.1	Integration test E2E: ingest → packager → CDN → player → license	Ân, Chuẩn, Lộc	2026-05-01	infra/smoke-test.sh pass xanh	Pending
+27	S3 Integration	T3.2	TLS 1.3 + HSTS + self-signed cert; Player cert pinning	Ân	2026-05-02	nginx https:// hoạt động	Pending
+28	S3 Integration	T3.3	Player UI: controls, seek (random access CTR), ABR switch, log panel	Ân	2026-05-05	UI demo-ready cho thuyết trình	Pending
+29	S3 Integration	T3.4	License session control (max 2 device) + audit log Mongo	Chuẩn	2026-05-02	Device thứ 3 bị từ chối; licenses_audit	Pending
+30	S3 Integration	T3.5	Master Key rotation API + re-encrypt Content Key	Chuẩn	2026-05-05	POST /kms/rotate + test rotation	Pending
+31	S3 Integration	T3.6	PoC E1 — download segment bằng wget → ffplay thất bại	Lộc	2026-05-03	Script + log ciphertext không phát được	Pending
+32	S3 Integration	T3.7	PoC E2 — IV Reuse attack (XOR 2 ciphertext cùng key/IV)	Lộc	2026-05-05	poc/iv-reuse.py + screenshot khôi phục	Pending
+33	S4 Attacks + WM	T4.1	PoC E3 — Key Extraction Widevine L3 bằng Frida (Chrome)	Lộc	2026-05-09	Script Frida + dump key console	Pending
+34	S4 Attacks + WM	T4.2	PoC E5 — License Replay (capture → replay → từ chối)	Lộc	2026-05-11	Log 401/403 Nonce expired	Pending
+35	S4 Attacks + WM	T4.3	Benchmark E6 — AES-128-CTR throughput có/không AES-NI	Chuẩn	2026-05-09	benchmarks/aes-throughput.md + biểu đồ	Pending
+36	S4 Attacks + WM	T4.4	Benchmark License latency p50/p95/p99 (k6 / autocannon)	Chuẩn	2026-05-12	benchmarks/license-latency.md + raw k6	Pending
+37	S4 Attacks + WM	T4.5	Watermark embed — User ID vào DCT tần số trung bình (Python)	Ân	2026-05-09	watermark/embed.py chạy với sample	Pending
+38	S4 Attacks + WM	T4.6	Watermark detect + robustness (re-encode, crop, blur, rotate)	Ân	2026-05-12	watermark/detect.py + bảng recall/precision	Pending
+39	S4 Attacks + WM	T4.7	E7 — tổng hợp hạn chế watermark (collusion, analog re-capture)	Ân	2026-05-12	Section report + slide	Pending
+40	S5 Hardening	T5.1	Package thêm scheme cbcs cho HLS (FairPlay compat)	Lộc	2026-05-16	output-hls/master.m3u8 chạy Safari	Pending
+41	S5 Hardening	T5.2	Docs pipeline packager — docs/packager.md có ví dụ lệnh	Lộc	2026-05-19	Markdown + screenshot output	Pending
+42	S5 Hardening	T5.3	Unit + integration test License Server (Jest + supertest)	Chuẩn	2026-05-16	Coverage >= 70% auth/kms/license	Pending
+43	S5 Hardening	T5.4	API spec OpenAPI/Swagger + docs/license-server.md	Chuẩn	2026-05-19	openapi.yaml + swagger UI	Pending
+44	S5 Hardening	T5.5	Benchmark Time-to-First-Frame: DRM vs no-DRM	Ân	2026-05-16	Bảng số liệu + biểu đồ	Pending
+45	S5 Hardening	T5.6	Hoàn thiện docker-compose: 1 lệnh up toàn hệ	Ân	2026-05-17	README run từ máy sạch OK	Pending
+46	S5 Hardening	T5.7	docs/player.md + docs/architecture.md (sơ đồ tổng)	Ân	2026-05-19	2 file md + diagram mermaid/ảnh	Pending
+47	S6 Delivery	T6.1	Tổng duyệt demo E2E + fix bug còn đọng	Ân, Chuẩn, Lộc	2026-05-22	Checklist demo 100% pass	Pending
+48	S6 Delivery	T6.2	Slide: ngữ cảnh media + kiến trúc + demo (5-7 slide)	Ân	2026-05-24	File slide nhánh report/	Pending
+49	S6 Delivery	T6.3	Slide: license flow + attack/defense + benchmark (5-7 slide)	Chuẩn	2026-05-24	File slide	Pending
+50	S6 Delivery	T6.4	Slide: CENC + segment design + watermark + PoC attack (5-7 slide)	Lộc	2026-05-24	File slide	Pending
+51	S6 Delivery	T6.5	Quay demo video backup (OBS) + kịch bản live demo	Ân, Chuẩn, Lộc	2026-05-26	File mp4 + kịch bản	Pending
+52	S6 Delivery	T6.6	Review README + hoàn thiện docs/ + cập nhật link Timeline	Ân	2026-05-26	README final, không còn TODO	Pending
+53	S6 Delivery	T6.7	Tổng duyệt cuối + nộp sản phẩm	Ân, Chuẩn, Lộc	2026-05-27	Nộp đúng hạn 27/05/2026	Pending
