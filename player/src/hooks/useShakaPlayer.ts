@@ -62,6 +62,7 @@ type ShakaVariantTrack = {
 type ShakaError = {
   category?: number;
   code?: number;
+  severity?: number;
   data?: unknown[];
   message?: string;
 };
@@ -94,16 +95,34 @@ export function useShakaPlayer(
       setError(`Attach failed: ${err.message}`);
       setStatus('error');
     });
+    const onPlaying = () => {
+      // Nếu playback đã chạy lại, xoá trạng thái lỗi cũ để tránh overlay bám dai.
+      setError(null);
+      setStatus('ready');
+    };
+    videoRef.current.addEventListener('playing', onPlaying);
 
     const onError = (event: Event) => {
       const detail =
         (event as unknown as { detail: ShakaError }).detail ?? {};
-      setError(
-        `[Shaka ${detail.category ?? '?'}/${detail.code ?? '?'}] ${
-          detail.data ? detail.data.join(' ') : detail.message ?? 'unknown error'
-        }`,
-      );
-      setStatus('error');
+      const message = `[Shaka ${detail.category ?? '?'}/${detail.code ?? '?'}] ${
+        detail.data ? detail.data.join(' ') : detail.message ?? 'unknown error'
+      }`;
+
+      // Chỉ coi là fatal khi severity là CRITICAL.
+      // Lỗi recoverable vẫn có thể phát tiếp, không nên phủ overlay đỏ.
+      const criticalSeverity = shaka?.util?.Error?.Severity?.CRITICAL ?? 2;
+      const isCritical =
+        detail.severity == null ? true : detail.severity === criticalSeverity;
+
+      if (isCritical) {
+        setError(message);
+        setStatus('error');
+        return;
+      }
+
+      // Giữ trạng thái ready cho lỗi recoverable để UX không bị "đỏ màn hình".
+      console.warn(`Recoverable playback warning: ${message}`);
     };
     player.addEventListener('error', onError);
 
@@ -129,6 +148,7 @@ export function useShakaPlayer(
       player.removeEventListener('error', onError);
       player.removeEventListener('trackschanged', refreshTracks);
       player.removeEventListener('adaptation', refreshTracks);
+      videoRef.current?.removeEventListener('playing', onPlaying);
       player.destroy();
       playerRef.current = null;
     };

@@ -73,7 +73,7 @@ export const MOCK_MANIFESTS: MockManifest[] = [
     title: 'Local cdn-sim (packager output)',
     description:
       'Manifest được sinh bởi Task T1.5 (packager) + phục vụ qua cdn-sim đã hardened (Task T1.6). Chạy `docker compose up cdn-sim` rồi chọn mục này.',
-    uri: '/video/manifest.mpd',
+    uri: 'http://localhost:8080/video/manifest.mpd',
     format: 'DASH',
     scheme: 'clear',
     source: 'local',

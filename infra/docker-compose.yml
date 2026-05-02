@@ -27,8 +27,11 @@ services:
       - "8080:80"     # HTTP (dev)
       - "8443:443"    # HTTPS (chuẩn bị TLS — bật khi mount cert)
     volumes:
-      # Ánh xạ folder chứa video của Lộc vào Nginx
-      - ../packager/output:/usr/share/nginx/html/video:ro
+      # Ánh xạ folder ENCRYPTED output (T2.1+T2.3) vào Nginx.
+      # Lộc xuất manifest.mpd + manifest_rotation.mpd + các segment .m4s
+      # đã mã hoá AES-128-CTR vào media-processing/output/.
+      # (folder packager/output/ chứa output CLEAR cũ — KHÔNG dùng cho demo DRM)
+      - ../media-processing/output:/usr/share/nginx/html/video:ro
       # Thư mục cert TLS — đặt fullchain.pem + privkey.pem để kích hoạt HTTPS
       - ../cdn-sim/certs:/etc/nginx/certs:ro
 
