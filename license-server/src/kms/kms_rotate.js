@@ -21,11 +21,7 @@ const crypto  = require('crypto');
 const router  = express.Router();
 const { verifyRS256 } = require('../auth/jwt');
 
-// Lưu Master Key hiện tại trong bộ nhớ (production: dùng HSM/Vault)
-// Khởi tạo từ biến môi trường hoặc tạo ngẫu nhiên (chỉ cho dev)
-let CURRENT_MASTER_KEY = process.env.KMS_MASTER_KEY
-    ? Buffer.from(process.env.KMS_MASTER_KEY, 'hex')
-    : crypto.randomBytes(32);
+const { getMasterKey, setMasterKey } = require('./kms');
 
 // ------------------------------------------------------------------
 // Helpers AES-256-GCM (giống kms.js nhưng dùng key truyền vào)
@@ -97,7 +93,7 @@ router.post('/rotate', async (req, res) => {
             try {
                 // Giải mã bằng Old Master Key
                 const plainHex = aesDecrypt(
-                    CURRENT_MASTER_KEY,
+                    getMasterKey(),
                     keyDoc.key_enc_b64,
                     keyDoc.key_enc_iv_b64,
                     keyDoc.auth_tag_b64
@@ -136,7 +132,7 @@ router.post('/rotate', async (req, res) => {
     } else {
         // PoC mode: chỉ thực hiện re-encrypt in-memory test
         const testKeyHex = crypto.randomBytes(16).toString('hex');
-        const enc        = aesEncrypt(CURRENT_MASTER_KEY, testKeyHex);
+        const enc        = aesEncrypt(getMasterKey(), testKeyHex);
         const reEnc      = aesEncrypt(NEW_MASTER_KEY,     testKeyHex);
         const verify     = aesDecrypt(NEW_MASTER_KEY, reEnc.key_enc_b64, reEnc.iv_b64, reEnc.auth_tag_b64);
 
@@ -145,8 +141,8 @@ router.post('/rotate', async (req, res) => {
         report.keys_processed = 1;
     }
 
-    // 6. Kích hoạt Master Key mới
-    CURRENT_MASTER_KEY = NEW_MASTER_KEY;
+    // 6. Kích hoạt Master Key mới trên toàn hệ thống
+    setMasterKey(NEW_MASTER_KEY);
 
     console.log(`[KMS] ✅ Master Key Rotation #${rotationId} — ${report.keys_processed} keys re-encrypted`);
 
@@ -161,8 +157,8 @@ router.post('/rotate', async (req, res) => {
 router.get('/status', (req, res) => {
     res.json({
         status:          'ok',
-        master_key_set:  !!CURRENT_MASTER_KEY,
-        key_length_bits: CURRENT_MASTER_KEY.length * 8,
+        master_key_set:  true,
+        key_length_bits: getMasterKey().length * 8,
     });
 });
 

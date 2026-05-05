@@ -16,8 +16,14 @@ const crypto = require('crypto');
 // Cấu hình Master Key (AES-256-GCM)
 // Trong production: lấy từ HSM hoặc biến môi trường được bảo vệ
 // ------------------------------------------------------------------
-const MASTER_KEY_HEX = process.env.KMS_MASTER_KEY || crypto.randomBytes(32).toString('hex');
-const MASTER_KEY     = Buffer.from(MASTER_KEY_HEX, 'hex');
+let MASTER_KEY_HEX = process.env.KMS_MASTER_KEY || crypto.randomBytes(32).toString('hex');
+let MASTER_KEY     = Buffer.from(MASTER_KEY_HEX, 'hex');
+
+function getMasterKey() { return MASTER_KEY; }
+function setMasterKey(newKeyBuffer) {
+    MASTER_KEY = newKeyBuffer;
+    MASTER_KEY_HEX = newKeyBuffer.toString('hex');
+}
 
 if (!process.env.KMS_MASTER_KEY) {
     console.warn('[KMS] WARNING: KMS_MASTER_KEY không được set — đang dùng key ngẫu nhiên (chỉ cho dev/test).');
@@ -146,6 +152,8 @@ module.exports = {
     hasNonce,
     issueLicense,
     validateLicense,
-    // Export cho test
+    // Export cho test & rotation
     _usedNonces: usedNonces,
+    getMasterKey,
+    setMasterKey,
 };
