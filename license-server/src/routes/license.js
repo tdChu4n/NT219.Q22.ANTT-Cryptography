@@ -23,7 +23,7 @@ function setDb(db) { _db = db; }
 
 // ---------------------------------------------------------------
 // POST /license
-// Body: { kid: string, device_public_key_pem: string, nonce: string, content_id: string }
+// Body: { kid: string, device_id: string, device_public_key_pem: string, nonce: string, content_id: string }
 // Header: Authorization: Bearer <JWT RS256>
 // ---------------------------------------------------------------
 router.post('/', async (req, res) => {
@@ -40,9 +40,9 @@ router.post('/', async (req, res) => {
     }
 
     // 2. Validate request body
-    const { kid, device_public_key_pem, nonce, content_id } = req.body;
-    if (!kid || !device_public_key_pem || !nonce || !content_id) {
-        return res.status(400).json({ error: 'Bad Request: Thiếu kid, device_public_key_pem, nonce hoặc content_id' });
+    const { kid, device_id, device_public_key_pem, nonce, content_id } = req.body;
+    if (!kid || !device_id || !device_public_key_pem || !nonce || !content_id) {
+        return res.status(400).json({ error: 'Bad Request: Thiếu kid, device_id, device_public_key_pem, nonce hoặc content_id' });
     }
 
     // 3. Chống Replay Attack — kiểm tra nonce
@@ -69,6 +69,28 @@ router.post('/', async (req, res) => {
             if (entitlement.expires_at && new Date() > new Date(entitlement.expires_at)) {
                 return res.status(403).json({
                     error: 'Forbidden: Quyền xem nội dung đã hết hạn'
+                });
+            }
+
+            // T3.4: Kiểm tra Session Control (Max 2 devices đồng thời)
+            const activeSessions = await _db.collection('sessions').find({
+                user_id: decoded.userId,
+                expires_at: { $gt: new Date() }
+            }).toArray();
+
+            const uniqueDevices = new Set(activeSessions.map(s => s.device_id));
+            if (!uniqueDevices.has(device_id) && uniqueDevices.size >= 2) {
+                // Đã đạt giới hạn 2 thiết bị khác nhau -> Từ chối và ghi Audit
+                await _db.collection('licenses_audit').insertOne({
+                    event: 'LICENSE_DENIED_MAX_DEVICES',
+                    user_id: decoded.userId,
+                    device_id: device_id,
+                    content_id: content_id,
+                    reason: 'Vượt quá giới hạn 2 thiết bị xem đồng thời',
+                    created_at: new Date()
+                });
+                return res.status(403).json({ 
+                    error: 'Forbidden: Đã đạt giới hạn 2 thiết bị xem đồng thời. Vui lòng đăng xuất ở thiết bị khác.' 
                 });
             }
         } catch (dbErr) {
@@ -134,8 +156,36 @@ router.post('/', async (req, res) => {
 
     // 7. Sinh Time-bound License và trả về (T2.6)
     const license = issueLicense(contentKeyHex, kidHex);
+    
+    // T3.4: Lưu Session và Audit Log nếu có DB
+    if (_db) {
+        const session_id = require('crypto').randomUUID();
+        const issued_at_date = new Date(license.issued_at * 1000);
+        const expires_at_date = new Date(license.expires_at * 1000);
 
-    console.log(`[License] ✅ Cấp license cho user=${decoded.userId}, content=${content_id}, KID=${kidHex}, exp=${license.expires_at}`);
+        await _db.collection('sessions').insertOne({
+            session_id: session_id,
+            user_id: decoded.userId,
+            device_id: device_id,
+            content_id: content_id,
+            issued_at: issued_at_date,
+            expires_at: expires_at_date,
+            nonce: license.nonce,
+            is_revoked: false
+        });
+
+        await _db.collection('licenses_audit').insertOne({
+            event: 'LICENSE_GRANTED',
+            session_id: session_id,
+            user_id: decoded.userId,
+            device_id: device_id,
+            content_id: content_id,
+            kid_hex: kidHex,
+            created_at: new Date()
+        });
+    }
+
+    console.log(`[License] ✅ Cấp license cho user=${decoded.userId}, device=${device_id}, content=${content_id}, exp=${license.expires_at}`);
 
     return res.status(200).json({
         kid:            kidHex,

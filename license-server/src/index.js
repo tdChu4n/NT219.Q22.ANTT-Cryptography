@@ -56,6 +56,11 @@ app.post('/api/auth/login', (req, res) => {
 const { router: licenseRouter, setDb } = require('./routes/license');
 app.use('/api/license', licenseRouter);
 
+// KMS: POST /kms/rotate — T3.5
+const kmsRotateRouter = require('./kms/kms_rotate');
+app.use('/kms', kmsRotateRouter);
+
+
 // Health check
 app.get('/', (req, res) => {
     res.json({ status: 'ok', message: '🔐 License Server NT219 đang chạy.' });
