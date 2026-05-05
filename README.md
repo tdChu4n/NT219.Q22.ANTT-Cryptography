@@ -71,19 +71,20 @@ Hệ thống được chia thành các node mạng chuyên biệt. Mỗi node đ
        [NODE 1: PROCESSING]                    [NODE 2: KMS & LICENSE SERVER]
    (Backend Worker - Internal VPC)             (Security Node - Public API an toàn)
   ┌─────────────────────────────┐           ┌───────────────────────────────────┐
-  │ 1. Transcode video (FFmpeg) │──(Lưu Key)─▶│ 1. Sinh Key (CSPRNG), lưu DB HSM  │
-  │ 2. Cắt Segment (fMP4 CMAF)  │           │ 2. Nhận Request từ Client         │
+  │ 1. Transcode video (FFmpeg) │──(KID+IV)──▶│ 1. Sinh Key (CSPRNG), lưu DB HSM  │
+  │ 2. Cắt Segment (fMP4 CMAF)  │           │ 2. Key Rotation (4 Keys / phim)   │
   │ 3. Mã hóa CENC (AES-CTR)    │           │ 3. Check Auth & Device Attestation│
-  └─────────────────────────────┘           │ 4. Trả License (RSA Encrypted)    │
-                 │                          └───────────────────────────────────┘
-          (Upload Ciphertext)                                 ▲
-                 ▼                                       (TLS 1.3 req)
-        [NODE 3: CDN / EDGE]                                  │
-    (Third-party - Public Network)                  [NODE 4: CLIENT APP]
+  └─────────────────────────────┘           │ 4. Trả License (RSA-OAEP Wrapped) │
+                 │                          └──────────────┬────────────────────┘
+          (Upload Ciphertext)               (License Request TLS 1.3) ▲
+                 ▼                          (RSA-OAEP License)        │
+        [NODE 3: CDN / EDGE]                                  [NODE 4: CLIENT APP]
+    (Third-party - Public Network)                  (Web / Mobile / SmartTV)
   ┌─────────────────────────────┐           ┌───────────────────────────────────┐
-  │ 1. Phân phối Playlist (.mpd)│◀─(Tải MPD)─│ 1. Player (Web / Mobile App)      │
-  │ 2. Caching Segment mã hóa   │◀─(Tải Seg)─│ 2. Fetch đoạn video (Ciphertext)  │
-  │ (Hỗ trợ Fallback CDN)       │           │ 3. Giải mã ngay trong RAM (Buffer)│
+  │ 1. Phân phối Playlist (.mpd)│◀─(Tải MPD)─│ 1. Player: Shaka / ExoPlayer       │
+  │ 2. Caching Segment mã hóa   │◀─(Tải Seg)─│ 2. Fetch Ciphertext từ CDN        │
+  │ 3. Hỗ trợ Fallback/Multi-CDN│           │ 3. CDM/TEE giải mã trong RAM      │
+  │ ⚠️ Không bao giờ lưu Key    │           │    Buffer = 0 sau render           │
   └─────────────────────────────┘           └───────────────────────────────────┘
 ```
 
@@ -102,17 +103,17 @@ Hệ thống được chia thành các node mạng chuyên biệt. Mỗi node đ
 
 Thay vì thiết kế tính năng web rườm rà, đồ án tập trung 100% vào Mật mã học cho luồng streaming:
 
-### 4.1. Thiết kế Segment & Giải mã Buffer (Anti-Download)
+### 5.1. Thiết kế Segment & Giải mã Buffer (Anti-Download)
 - Video 5GB không mã hóa nguyên cục. Nó được băm thành **hàng trăm segment (2-10 giây)**.
 - Khi người dùng tải lậu 1 segment, họ nhận được Ciphertext vô nghĩa.
 - Ứng dụng Client **không tải hết**, nó tải segment 1, đưa vào RAM, CDM giải mã -> Phát hình -> **Gán = 0 và xóa ngay khỏi RAM**. File bản rõ không bao giờ tồn tại trên ổ cứng.
 
-### 4.2. Mã dòng AES-128-CTR (Streaming Encryption)
+### 5.2. Mã dòng AES-128-CTR (Streaming Encryption)
 - **Tại sao không dùng AES-ECB/CBC?** Streaming cần tốc độ cao, giải mã song song và đặc biệt là khả năng **tua (seek)**. Phải giải mã từ giữa video mà không cần giải mã đoạn đầu.
 - **Giải pháp:** Biến block cipher thành mã dòng với **AES-CTR**. Tốc độ AES-NI cực nhanh (~4GB/s).
 - Rủi ro mật mã duy nhất của AES-CTR là *Nonce Reuse*. Hệ thống triệt tiêu rủi ro này bằng cách ép **mỗi segment có một IV (Initialization Vector) riêng biệt** sinh bằng CSPRNG.
 
-### 4.3. Key Distribution & Rotation (Quản lý và Xoay Khóa)
+### 5.3. Key Distribution & Rotation (Quản lý và Xoay Khóa)
 **Bài toán:** Phim dài 2 tiếng có 720 segment. 720 Key thì quá tải hệ thống, 1 Key chung thì lộ là mất cả phim.
 **Giải pháp kiến trúc:**
 - Sử dụng chiến lược **Key Rotation (Short-lived keys)**. Mỗi bộ phim chia làm các Period (ví dụ 30 phút).
@@ -161,7 +162,8 @@ Bởi vì Mật mã học bị giới hạn trước Camera quay lén (Analog Ho
 
 ### 8.3. Thu thập Metrics
 - **Performance:** License latency (thời gian trễ khi xin khóa), TTFF (Time-To-First-Frame), mức ngốn CPU khi giải mã AES-CTR.
-- **Security:** Tỉ lệ chống tải lậu thành công (100%), rủi ro lộ khóa.
+- **Security:** Tỉ lệ chống tải lậu thành công (100%), rủi ro lộ khóa. Kết quả Token Replay bị chặn (pass/fail).
+- **Watermarking:** Detectability rate (% phát hiện đúng nguồn rò rỉ), False-positive rate, Chi phí xử lý nhúng/dò tìm (ms/frame).
 
 ---
 
@@ -181,7 +183,8 @@ project-root/
   ├─ cdn-sim/            # Nginx mô phỏng CDN & Caching
   ├─ player/             # Shaka Player Web App
   ├─ watermark/          # Script nhúng & dò tìm Forensic Watermarking
-  └─ docs/               # Báo cáo, slide, kiến trúc
+  ├─ infra/              # Docker Compose / cấu hình triển khai hệ thống
+  └─ docs/               # Báo cáo, slide, kiến trúc, sơ đồ draw.io
 ```
 
 ---
@@ -196,6 +199,7 @@ project-root/
 
 ## 11. Tài liệu Khảo sát (Literature & Industry References)
 
+<<<<<<< HEAD
 - ISO/IEC 23001-7 (MPEG-CENC Specification).
 - Widevine DRM Architecture & PlayReady Documentation.
 - Các bài báo nghiên cứu về Robust Watermarking & Forensic Tracking.
@@ -226,6 +230,30 @@ Các hạng mục dưới đây phải phản ánh trên sheet (cột tên/ nộ
 | 3 | R | Báo cáo, slide, tổng hợp kết quả thực nghiệm & metrics | Bản nộp đồ án | § Metrics, § Thực nghiệm |
 
 Ghi chú: mã **T1.5–T1.7** trùng với gọi tên trong mã nguồn (`player` / `cdn-sim` / packager). **Task 3** trong script ingest tương ứng **T1.1** (transcode/ABR).
+=======
+**Tiêu chuẩn & Đặc tả kỹ thuật:**
+- ISO/IEC 23001-7:2016 — MPEG Common Encryption (CENC) Specification.
+- ISO/IEC 14496-12 — MPEG-4 Part 12: ISO Base Media File Format (fMP4/CMAF).
+- W3C Encrypted Media Extensions (EME) Specification — https://www.w3.org/TR/encrypted-media/
+- IETF RFC 5288 — AES Galois Counter Mode (GCM) for TLS.
+- NIST SP 800-38A — Recommendation for Block Cipher Modes of Operation (CTR Mode).
+- NIST SP 800-90A — Recommendation for CSPRNG using Deterministic RBGs.
+
+**DRM & Industry References:**
+- Google Widevine DRM Architecture Overview — https://widevine.com
+- Microsoft PlayReady Documentation — https://docs.microsoft.com/playready
+- Apple FairPlay Streaming Overview — https://developer.apple.com/streaming/fps/
+
+**Watermarking & Forensic Tracking:**
+- Cox, I. J., Miller, M. L., Bloom, J. A. (2002). *Digital Watermarking and Steganography*. Morgan Kaufmann.
+- Katzenbeisser, S., & Petitcolas, F. (2000). *Information Hiding Techniques for Steganography and Digital Watermarking*. Artech House.
+
+**Công cụ & SDK:**
+- FFmpeg — https://ffmpeg.org (Transcode, ABR encoding)
+- `shaka-packager` — https://github.com/shaka-project/shaka-packager (CMAF/CENC packaging)
+- Shaka Player — https://github.com/shaka-project/shaka-player (EME Web Player)
+- Bento4 — https://www.bento4.com (MP4/CMAF analysis tools)
+>>>>>>> 17460b2 (Sua readme)
 
 ---
 
