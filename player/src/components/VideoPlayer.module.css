@@ -7,6 +7,12 @@
   overflow: hidden;
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.wrap:focus-within {
+  outline: 2px solid rgba(91, 140, 255, 0.5);
+  outline-offset: 2px;
 }
 
 .video {
@@ -62,4 +68,18 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.bigPlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.wrap:hover .bigPlay {
+  opacity: 1;
 }

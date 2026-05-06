@@ -78,3 +78,50 @@
   font-size: 0.85rem;
   color: var(--fg-muted);
 }
+
+.statRow {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 0.7rem;
+}
+
+@media (min-width: 1280px) {
+  .statRow {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.stat {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  text-align: center;
+}
+
+.statLabel {
+  font-size: 0.66rem;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 0.18rem;
+}
+
+.statValue {
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.statOk {
+  color: var(--success);
+}
+
+.statWarn {
+  color: var(--warning);
+}
+
+.statErr {
+  color: var(--danger);
+}

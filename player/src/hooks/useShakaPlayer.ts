@@ -58,6 +58,65 @@ export type ShakaTrack = {
 };
 
 /**
+ * Snapshot trạng thái phát hiện tại — phục vụ custom controls (T1.7 polish).
+ * Cập nhật theo `timeupdate / volumechange / ratechange / seeking / seeked`
+ * và một interval 1 s đọc `player.getStats()`.
+ */
+export type PlaybackState = {
+  paused: boolean;
+  ended: boolean;
+  seeking: boolean;
+  buffering: boolean;
+  currentTime: number;
+  duration: number;
+  /** Số giây đã buffer ahead so với currentTime (buffer health). */
+  bufferAhead: number;
+  /** Vùng đã play hoặc buffer (mảng [start, end]) — dùng vẽ seek bar nâng cao. */
+  bufferedRanges: Array<{ start: number; end: number }>;
+  volume: number;
+  muted: boolean;
+  playbackRate: number;
+  /** Bandwidth ABR estimate (bytes/giây) từ player.getStats(). */
+  estimatedBandwidth: number;
+  /** Bitrate variant đang phát (bps). */
+  activeBitrate: number;
+  decodedFrames: number;
+  droppedFrames: number;
+};
+
+const EMPTY_PLAYBACK: PlaybackState = {
+  paused: true,
+  ended: false,
+  seeking: false,
+  buffering: false,
+  currentTime: 0,
+  duration: 0,
+  bufferAhead: 0,
+  bufferedRanges: [],
+  volume: 1,
+  muted: false,
+  playbackRate: 1,
+  estimatedBandwidth: 0,
+  activeBitrate: 0,
+  decodedFrames: 0,
+  droppedFrames: 0,
+};
+
+export type LogLevel = 'info' | 'warn' | 'error';
+
+/**
+ * Sự kiện ghi nhận trong log panel — categorized để filter & màu hoá.
+ */
+export type LogEntry = {
+  id: number;
+  ts: number;
+  level: LogLevel;
+  /** Phân loại: manifest | adaptation | license | pin | playback | seek | error | system */
+  kind: string;
+  message: string;
+};
+
+/**
  * Một lượt yêu cầu license đã hoàn tất (thành công hoặc thất bại) — phục vụ
  * panel theo dõi license latency và đo metric cho § 8.3 của README.
  */
@@ -152,11 +211,24 @@ export type UseShakaPlayerReturn = {
   tracks: ShakaTrack[];
   drmInfo: DrmInfo;
   pinStatus: PinStatus;
+  playback: PlaybackState;
+  logs: LogEntry[];
   load: (manifest: MockManifest, opts?: LoadOptions) => Promise<void>;
   unload: () => Promise<void>;
   selectTrack: (trackId: number) => void;
   enableAbr: (enabled: boolean) => void;
   abrEnabled: boolean;
+  // Playback controls
+  play: () => void;
+  pause: () => void;
+  togglePlay: () => void;
+  seekTo: (timeSec: number) => void;
+  seekBy: (deltaSec: number) => void;
+  setVolume: (vol: number) => void;
+  toggleMute: () => void;
+  setPlaybackRate: (rate: number) => void;
+  requestFullscreen: () => void;
+  clearLogs: () => void;
 };
 
 type ShakaVariantTrack = {
@@ -192,11 +264,35 @@ export function useShakaPlayer(
   const [abrEnabled, setAbrEnabled] = useState(true);
   const [drmInfo, setDrmInfo] = useState<DrmInfo>(EMPTY_DRM_INFO);
   const [pinStatus, setPinStatus] = useState<PinStatus>(EMPTY_PIN_STATUS);
+  const [playback, setPlayback] = useState<PlaybackState>(EMPTY_PLAYBACK);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
 
   // Bộ đếm bytes của request gần nhất (đo trong request filter, đọc lại
   // trong response filter). Dùng Map<uri, bytes> để hỗ trợ song song
   // (audio + video license trong cùng một phim).
   const pendingRequestBytesRef = useRef<Map<string, number>>(new Map());
+
+  // Counter monotonic cho LogEntry.id (tránh trùng key React khi spam log).
+  const logIdRef = useRef(0);
+  /**
+   * Push một log entry mới (giữ tối đa 200 entry, latest-first).
+   * Dùng ref-stable callback để các event handler bên ngoài hook (vd: pin
+   * filter) gọi được mà không cần re-create.
+   */
+  const pushLog = useCallback(
+    (level: LogLevel, kind: string, message: string) => {
+      logIdRef.current += 1;
+      const entry: LogEntry = {
+        id: logIdRef.current,
+        ts: Date.now(),
+        level,
+        kind,
+        message,
+      };
+      setLogs((prev) => [entry, ...prev].slice(0, 200));
+    },
+    [],
+  );
 
   // ---- mount / unmount ---------------------------------------------------
   useEffect(() => {
@@ -237,10 +333,12 @@ export function useShakaPlayer(
       if (isCritical) {
         setError(message);
         setStatus('error');
+        pushLog('error', 'error', message);
         return;
       }
 
       console.warn(`Recoverable playback warning: ${message}`);
+      pushLog('warn', 'error', message);
     };
     player.addEventListener('error', onError);
 
@@ -317,6 +415,11 @@ export function useShakaPlayer(
         lastLicense: stat,
         history: [stat, ...prev.history].slice(0, 8),
       }));
+      pushLog(
+        'info',
+        'license',
+        `License OK · ${stat.timeMs.toFixed(0)}ms · ${stat.responseBytes}B`,
+      );
     };
 
     networkingEngine.registerRequestFilter(onLicenseRequest);
@@ -339,17 +442,175 @@ export function useShakaPlayer(
             ...prev.counts,
             [ev.outcome]: prev.counts[ev.outcome] + 1,
           },
-          // Chỉ giữ history các sự kiện không phải skipped (giảm noise)
-          // — skipped vẫn cộng vào counts để dev biết tỉ lệ origin
-          // KHÔNG nằm trong pin list.
           history:
             ev.outcome === 'skipped'
               ? prev.history
               : [ev, ...prev.history].slice(0, 8),
         }));
+        if (ev.outcome === 'mismatch') {
+          pushLog(
+            'error',
+            'pin',
+            `Cert pin MISMATCH @ ${ev.origin} · received ${ev.receivedPin?.slice(0, 24) ?? '?'}…`,
+          );
+        } else if (ev.outcome === 'missing') {
+          pushLog('warn', 'pin', `Cert pin missing @ ${ev.origin}`);
+        }
+        // outcome 'ok' & 'skipped' không log để tránh spam — đã hiển thị
+        // trên LicensePanel counter.
       },
     );
     networkingEngine.registerResponseFilter(pinFilter);
+
+    // ---- Video element events → playback state + log ---------------------
+    const video = videoRef.current;
+    /** Đồng bộ state phát từ HTMLVideoElement vào React state. */
+    const syncFromVideo = (overrides?: Partial<PlaybackState>) => {
+      if (!video) return;
+      const ranges: Array<{ start: number; end: number }> = [];
+      for (let i = 0; i < video.buffered.length; i += 1) {
+        ranges.push({
+          start: video.buffered.start(i),
+          end: video.buffered.end(i),
+        });
+      }
+      // Buffer ahead = max(end) - currentTime trong vùng chứa currentTime.
+      let bufferAhead = 0;
+      for (const r of ranges) {
+        if (video.currentTime >= r.start && video.currentTime <= r.end) {
+          bufferAhead = Math.max(0, r.end - video.currentTime);
+          break;
+        }
+      }
+      setPlayback((prev) => ({
+        ...prev,
+        paused: video.paused,
+        ended: video.ended,
+        currentTime: video.currentTime,
+        duration: Number.isFinite(video.duration) ? video.duration : 0,
+        bufferAhead,
+        bufferedRanges: ranges,
+        volume: video.volume,
+        muted: video.muted,
+        playbackRate: video.playbackRate,
+        ...overrides,
+      }));
+    };
+
+    const onTimeUpdate = () => syncFromVideo();
+    const onVolumeChange = () => syncFromVideo();
+    const onRateChange = () => {
+      syncFromVideo();
+      if (video) {
+        pushLog(
+          'info',
+          'playback',
+          `Playback rate → ${video.playbackRate.toFixed(2)}x`,
+        );
+      }
+    };
+    const onLoadedMetadata = () => {
+      syncFromVideo();
+      if (video) {
+        pushLog(
+          'info',
+          'playback',
+          `Loaded metadata · duration ${video.duration.toFixed(1)}s`,
+        );
+      }
+    };
+    const onPlay = () => {
+      syncFromVideo({ paused: false });
+      pushLog('info', 'playback', 'Play');
+    };
+    const onPauseEvt = () => {
+      syncFromVideo({ paused: true });
+      pushLog('info', 'playback', 'Pause');
+    };
+    const onSeeking = () => {
+      syncFromVideo({ seeking: true });
+      pushLog(
+        'info',
+        'seek',
+        // Highlight tính chất AES-CTR random-access cho thuyết trình.
+        `Seeking → ${video?.currentTime.toFixed(2)}s · AES-CTR random-access (không cần giải mã từ đầu)`,
+      );
+    };
+    const onSeeked = () => {
+      syncFromVideo({ seeking: false });
+      pushLog(
+        'info',
+        'seek',
+        `Seeked @ ${video?.currentTime.toFixed(2)}s — segment đã giải mã & decode tức thì`,
+      );
+    };
+    const onWaiting = () => {
+      syncFromVideo({ buffering: true });
+      pushLog('warn', 'playback', 'Buffer underrun (waiting)');
+    };
+    const onCanPlay = () => syncFromVideo({ buffering: false });
+    const onEnded = () => {
+      syncFromVideo({ ended: true, paused: true });
+      pushLog('info', 'playback', 'Ended');
+    };
+
+    video?.addEventListener('timeupdate', onTimeUpdate);
+    video?.addEventListener('volumechange', onVolumeChange);
+    video?.addEventListener('ratechange', onRateChange);
+    video?.addEventListener('loadedmetadata', onLoadedMetadata);
+    video?.addEventListener('play', onPlay);
+    video?.addEventListener('pause', onPauseEvt);
+    video?.addEventListener('seeking', onSeeking);
+    video?.addEventListener('seeked', onSeeked);
+    video?.addEventListener('waiting', onWaiting);
+    video?.addEventListener('canplay', onCanPlay);
+    video?.addEventListener('ended', onEnded);
+
+    // ---- Shaka events → log ----------------------------------------------
+    const onAdaptation = () => {
+      const variants: ShakaVariantTrack[] = player.getVariantTracks();
+      const active = variants.find((v) => v.active);
+      if (active) {
+        pushLog(
+          'info',
+          'adaptation',
+          `ABR → ${active.height ?? '?'}p · ${(active.bandwidth / 1000).toFixed(0)} kbps`,
+        );
+      }
+    };
+    player.addEventListener('adaptation', onAdaptation);
+
+    const onLoaded = () => pushLog('info', 'manifest', 'Manifest loaded');
+    player.addEventListener('loaded', onLoaded);
+
+    const onBufferingChanged = (ev: Event) => {
+      const buffering = !!(ev as unknown as { buffering?: boolean }).buffering;
+      syncFromVideo({ buffering });
+      pushLog(
+        buffering ? 'warn' : 'info',
+        'playback',
+        buffering ? 'Buffering started' : 'Buffering ended',
+      );
+    };
+    player.addEventListener('buffering', onBufferingChanged);
+
+    // ---- Stats poll (1 Hz) — bandwidth, decoded/dropped frames -----------
+    const statsTimer = window.setInterval(() => {
+      try {
+        const s = player.getStats?.();
+        if (!s) return;
+        setPlayback((prev) => ({
+          ...prev,
+          estimatedBandwidth: s.estimatedBandwidth ?? prev.estimatedBandwidth,
+          activeBitrate:
+            s.streamBandwidth ?? s.video?.bandwidth ?? prev.activeBitrate,
+          decodedFrames: s.decodedFrames ?? prev.decodedFrames,
+          droppedFrames: s.droppedFrames ?? prev.droppedFrames,
+        }));
+      } catch {
+        /* ignore — getStats có thể chưa sẵn lúc idle */
+      }
+    }, 1000);
 
     return () => {
       try {
@@ -359,14 +620,29 @@ export function useShakaPlayer(
       } catch {
         // NetworkingEngine có thể đã bị destroy cùng player — bỏ qua.
       }
+      window.clearInterval(statsTimer);
       player.removeEventListener('error', onError);
       player.removeEventListener('trackschanged', refreshTracks);
       player.removeEventListener('adaptation', refreshTracks);
+      player.removeEventListener('adaptation', onAdaptation);
+      player.removeEventListener('loaded', onLoaded);
+      player.removeEventListener('buffering', onBufferingChanged);
+      video?.removeEventListener('timeupdate', onTimeUpdate);
+      video?.removeEventListener('volumechange', onVolumeChange);
+      video?.removeEventListener('ratechange', onRateChange);
+      video?.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video?.removeEventListener('play', onPlay);
+      video?.removeEventListener('pause', onPauseEvt);
+      video?.removeEventListener('seeking', onSeeking);
+      video?.removeEventListener('seeked', onSeeked);
+      video?.removeEventListener('waiting', onWaiting);
+      video?.removeEventListener('canplay', onCanPlay);
+      video?.removeEventListener('ended', onEnded);
       videoRef.current?.removeEventListener('playing', onPlaying);
       player.destroy();
       playerRef.current = null;
     };
-  }, [videoRef]);
+  }, [videoRef, pushLog]);
 
   // ---- load --------------------------------------------------------------
   const load = useCallback(
@@ -382,6 +658,11 @@ export function useShakaPlayer(
         keyIds: manifest.keyId ? [manifest.keyId] : [],
       });
       setPinStatus({ ...EMPTY_PIN_STATUS });
+      pushLog(
+        'info',
+        'manifest',
+        `Loading "${manifest.title}" (${manifest.scheme})…`,
+      );
 
       // ---- DRM config -----------------------------------------------------
       // - servers[keySystem]: license endpoint chính.
@@ -470,6 +751,7 @@ export function useShakaPlayer(
         }`;
         setError(msg);
         setStatus('error');
+        pushLog('error', 'manifest', msg);
 
         // Ghi nhận license error (nếu Shaka phân loại là DRM category=6).
         if (e.category === 6) {
@@ -487,10 +769,11 @@ export function useShakaPlayer(
             lastLicense: stat,
             history: [stat, ...prev.history].slice(0, 8),
           }));
+          pushLog('error', 'license', msg);
         }
       }
     },
-    [],
+    [pushLog],
   );
 
   const unload = useCallback(async () => {
@@ -501,26 +784,134 @@ export function useShakaPlayer(
     setTracks([]);
     setDrmInfo(EMPTY_DRM_INFO);
     setPinStatus(EMPTY_PIN_STATUS);
+    setPlayback(EMPTY_PLAYBACK);
   }, []);
 
-  const selectTrack = useCallback((trackId: number) => {
-    const player = playerRef.current;
-    if (!player) return;
-    const track = player
-      .getVariantTracks()
-      .find((t: ShakaVariantTrack) => t.id === trackId);
-    if (!track) return;
-    player.configure({ abr: { enabled: false } });
-    setAbrEnabled(false);
-    player.selectVariantTrack(track, /* clearBuffer */ true);
-  }, []);
+  const selectTrack = useCallback(
+    (trackId: number) => {
+      const player = playerRef.current;
+      if (!player) return;
+      const track = player
+        .getVariantTracks()
+        .find((t: ShakaVariantTrack) => t.id === trackId);
+      if (!track) return;
+      player.configure({ abr: { enabled: false } });
+      setAbrEnabled(false);
+      player.selectVariantTrack(track, /* clearBuffer */ true);
+      pushLog(
+        'info',
+        'adaptation',
+        `Manual select → ${track.height ?? '?'}p · ${(track.bandwidth / 1000).toFixed(0)} kbps (ABR off)`,
+      );
+    },
+    [pushLog],
+  );
 
-  const enableAbr = useCallback((enabled: boolean) => {
-    const player = playerRef.current;
-    if (!player) return;
-    player.configure({ abr: { enabled } });
-    setAbrEnabled(enabled);
-  }, []);
+  const enableAbr = useCallback(
+    (enabled: boolean) => {
+      const player = playerRef.current;
+      if (!player) return;
+      player.configure({ abr: { enabled } });
+      setAbrEnabled(enabled);
+      pushLog(
+        'info',
+        'adaptation',
+        enabled ? 'ABR enabled (auto)' : 'ABR disabled (manual)',
+      );
+    },
+    [pushLog],
+  );
+
+  // ---- Playback controls -------------------------------------------------
+  const play = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    void v.play().catch((err: Error) => {
+      pushLog('warn', 'playback', `Play rejected: ${err.message}`);
+    });
+  }, [videoRef, pushLog]);
+
+  const pause = useCallback(() => {
+    videoRef.current?.pause();
+  }, [videoRef]);
+
+  const togglePlay = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused || v.ended) play();
+    else pause();
+  }, [videoRef, play, pause]);
+
+  /**
+   * Seek tới mốc thời gian (giây). Chứng minh AES-CTR random-access:
+   * Player chỉ cần segment chứa mốc đó, decrypt độc lập với các segment
+   * khác (vì IV mỗi segment unique).
+   */
+  const seekTo = useCallback(
+    (timeSec: number) => {
+      const v = videoRef.current;
+      if (!v) return;
+      const target = Math.max(
+        0,
+        Math.min(timeSec, Number.isFinite(v.duration) ? v.duration : timeSec),
+      );
+      v.currentTime = target;
+    },
+    [videoRef],
+  );
+
+  const seekBy = useCallback(
+    (deltaSec: number) => {
+      const v = videoRef.current;
+      if (!v) return;
+      seekTo(v.currentTime + deltaSec);
+    },
+    [videoRef, seekTo],
+  );
+
+  const setVolume = useCallback(
+    (vol: number) => {
+      const v = videoRef.current;
+      if (!v) return;
+      v.volume = Math.max(0, Math.min(1, vol));
+      if (v.muted && vol > 0) v.muted = false;
+    },
+    [videoRef],
+  );
+
+  const toggleMute = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = !v.muted;
+  }, [videoRef]);
+
+  const setPlaybackRate = useCallback(
+    (rate: number) => {
+      const v = videoRef.current;
+      if (!v) return;
+      v.playbackRate = rate;
+    },
+    [videoRef],
+  );
+
+  const requestFullscreen = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    // Ưu tiên fullscreen ở video element; fallback container của controls
+    // có thể được caller xử lý bằng cách wrap requestFullscreen riêng.
+    const el = v as HTMLVideoElement & {
+      webkitRequestFullscreen?: () => void;
+    };
+    if (document.fullscreenElement) {
+      void document.exitFullscreen?.();
+    } else if (el.requestFullscreen) {
+      void el.requestFullscreen();
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+    }
+  }, [videoRef]);
+
+  const clearLogs = useCallback(() => setLogs([]), []);
 
   return {
     status,
@@ -528,10 +919,22 @@ export function useShakaPlayer(
     tracks,
     drmInfo,
     pinStatus,
+    playback,
+    logs,
     load,
     unload,
     selectTrack,
     enableAbr,
     abrEnabled,
+    play,
+    pause,
+    togglePlay,
+    seekTo,
+    seekBy,
+    setVolume,
+    toggleMute,
+    setPlaybackRate,
+    requestFullscreen,
+    clearLogs,
   };
 }

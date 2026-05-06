@@ -45,6 +45,19 @@
   font-weight: 500;
 }
 
+.statusShortcuts {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+@media (max-width: 720px) {
+  .statusShortcuts {
+    display: none;
+  }
+}
+
 .statusDot {
   width: 8px;
   height: 8px;
