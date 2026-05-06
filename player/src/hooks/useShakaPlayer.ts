@@ -258,7 +258,11 @@ export function useShakaPlayer(
 ): UseShakaPlayerReturn {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const playerRef = useRef<any>(null);
-  const [status, setStatus] = useState<ShakaStatus>('idle');
+  // Khởi đầu = 'loading' (đang attach video element). Chỉ chuyển sang 'idle'
+  // SAU khi `player.attach()` resolve — nếu set 'idle' từ render đầu, App.tsx
+  // sẽ chạy auto-load TRƯỚC khi player attach xong → Shaka throw 7/7002
+  // (NO_VIDEO_ELEMENT) → cascade 6/6001 (FAILED_TO_ATTACH_TO_VIDEO).
+  const [status, setStatus] = useState<ShakaStatus>('loading');
   const [error, setError] = useState<string | null>(null);
   const [tracks, setTracks] = useState<ShakaTrack[]>([]);
   const [abrEnabled, setAbrEnabled] = useState(true);
@@ -308,10 +312,43 @@ export function useShakaPlayer(
     const player = new shaka.Player();
     playerRef.current = player;
 
-    player.attach(videoRef.current).catch((err: Error) => {
-      setError(`Attach failed: ${err.message}`);
-      setStatus('error');
+    // Probe key-system support trước (async, song song với attach). Nếu
+    // browser không có Widevine CDM (vd: Chromium build mở, Firefox, hoặc
+    // Chrome bị tắt Protected Content) → log để demo biết mà bật, tránh
+    // hiểu nhầm là code lỗi. Shaka.Player.probeSupport() trả về object
+    // dạng { drm: { 'com.widevine.alpha': {...} }, manifest: {...} }.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    shaka.Player.probeSupport?.().then?.((support: any) => {
+      const drmSupport = support?.drm ?? {};
+      const widevine = drmSupport['com.widevine.alpha'];
+      const playready = drmSupport['com.microsoft.playready'];
+      pushLog(
+        widevine ? 'info' : 'warn',
+        'player',
+        widevine
+          ? `CDM khả dụng: Widevine ✓ (persistentState=${
+              widevine.persistentState ?? 'unknown'
+            })`
+          : 'Widevine CDM KHÔNG khả dụng — bật trong Chrome: Settings → Privacy → Site Settings → Additional content settings → Protected content. Firefox/Chromium open-source không kèm Widevine.',
+      );
+      if (playready) {
+        pushLog('info', 'player', 'CDM khả dụng: PlayReady ✓');
+      }
     });
+
+    // Attach là async. Chỉ chuyển status='idle' (=ready để load) sau khi
+    // attach xong, đảm bảo App.tsx auto-load không race với việc gắn video.
+    player
+      .attach(videoRef.current)
+      .then(() => {
+        setStatus('idle');
+        pushLog('info', 'player', 'Player attached to <video> — sẵn sàng load.');
+      })
+      .catch((err: Error) => {
+        setError(`Attach failed: ${err.message}`);
+        setStatus('error');
+        pushLog('error', 'player', `Attach failed: ${err.message}`);
+      });
 
     const onPlaying = () => {
       setError(null);
@@ -373,22 +410,32 @@ export function useShakaPlayer(
     ) => {
       if (type !== RequestType.LICENSE) return;
 
-      // Headers phục vụ debug + chuẩn bị wire JWT khi T2.4/T2.5 sẵn sàng.
-      // Lưu ý: license-server ở task T2.4 sẽ verify Authorization Bearer.
-      request.headers = request.headers ?? {};
-      request.headers['X-Player-Build'] = 'NT219-T1.7';
+      const uri = request.uris?.[0] ?? '';
+      // Chỉ gắn custom header cho license endpoint NỘI BỘ. Header tuỳ
+      // chỉnh sẽ trigger CORS preflight OPTIONS — license proxy công cộng
+      // (vd: cwip-shaka-proxy) không allow `X-Player-Build` trong
+      // Access-Control-Allow-Headers → preflight fail → 6001 LICENSE
+      // _REQUEST_FAILED. Pattern check: URI relative hoặc same-origin
+      // hoặc trỏ tới cdn-sim/license-server local.
+      const isInternal =
+        uri.startsWith('/') ||
+        uri.startsWith(window.location.origin) ||
+        /\b(localhost|cdn\.local|cdn-sim|license-server)\b/.test(uri);
 
-      // TODO[T2.4]: gắn JWT entitlement
-      //   request.headers['Authorization'] = `Bearer ${getEntitlementToken()}`;
-      // TODO[T2.5]: gửi device public key cho RSA-OAEP key wrap
-      //   request.headers['X-Device-Pubkey'] = base64(devicePubKey);
+      if (isInternal) {
+        request.headers = request.headers ?? {};
+        request.headers['X-Player-Build'] = 'NT219-T1.7';
+        // TODO[T2.4]: gắn JWT entitlement
+        //   request.headers['Authorization'] = `Bearer ${getEntitlementToken()}`;
+        // TODO[T2.5]: gửi device public key cho RSA-OAEP key wrap
+        //   request.headers['X-Device-Pubkey'] = base64(devicePubKey);
+      }
 
-      const uri = request.uris?.[0] ?? '<unknown>';
       const bodyBytes =
         request.body instanceof ArrayBuffer
           ? request.body.byteLength
           : request.body?.byteLength ?? 0;
-      pendingRequestBytesRef.current.set(uri, bodyBytes);
+      pendingRequestBytesRef.current.set(uri || '<unknown>', bodyBytes);
     };
 
     const onLicenseResponse = (
@@ -676,31 +723,18 @@ export function useShakaPlayer(
       const keySystem = manifest.drm?.keySystem ?? '';
 
       if (keySystem && targetLicenseServer) {
+        // Để Shaka tự chọn robustness mặc định cho Widevine/PlayReady —
+        // trên Chrome desktop CDM sẽ tự pick SW_SECURE_CRYPTO (L3) khi
+        // không có TEE. Tránh override `advanced` vì Shaka v4.16 đã thay
+        // API từ string sang array, dễ gây lỗi tương thích với public
+        // test license proxy (cwip-shaka-proxy).
         player.configure({
           drm: {
             servers: { [keySystem]: targetLicenseServer },
-            advanced: {
-              'com.widevine.alpha': {
-                // Widevine L3 = phần mềm. Ép giá trị này để CDM không leo
-                // lên L1 trên thiết bị có TEE (giữ kết quả demo nhất quán
-                // và tương thích với cwip-shaka-proxy test KIDs).
-                videoRobustness: 'SW_SECURE_CRYPTO',
-                audioRobustness: 'SW_SECURE_CRYPTO',
-                persistentStateRequired: false,
-                distinctiveIdentifierRequired: false,
-                sessionType: 'temporary',
-              },
-              'com.microsoft.playready': {
-                videoRobustness: 'SW_SECURE_DECODE',
-                audioRobustness: 'SW_SECURE_DECODE',
-              },
-            },
             preferredKeySystems: [
               'com.widevine.alpha',
               'com.microsoft.playready',
             ],
-            // Bắt buộc license server response không được cache (defense
-            // in depth — Nginx đã set no-store, đây là layer thứ 2).
             retryParameters: {
               maxAttempts: 3,
               baseDelay: 500,
@@ -711,7 +745,7 @@ export function useShakaPlayer(
           },
         });
       } else {
-        player.configure({ drm: { servers: {}, advanced: {} } });
+        player.configure({ drm: { servers: {} } });
       }
 
       player.configure({ abr: { enabled: true } });
