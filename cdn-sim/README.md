@@ -57,34 +57,56 @@ curl -I -H "Accept-Encoding: gzip" http://localhost:8080/video/seg_001.m4s | gre
 # (không có header Content-Encoding: gzip → đúng)
 ```
 
-### 2.3 Chuẩn bị TLS 1.2 / 1.3
+### 2.3 TLS 1.2 / 1.3 + HSTS + Cert Pinning (đã hoàn tất)
 
-Toàn bộ luồng License (Key) phải đi qua **TLS 1.3** (theo thiết kế mật mã của đồ án). nginx.conf đã chứa sẵn:
+Toàn bộ luồng License (Key) và segment đi qua **TLS 1.3** (TLS 1.2 fallback). `nginx.conf` đã bật chính thức:
 
-- Block `server { listen 443 ssl http2; ... }` (đang comment) đã cấu hình:
-  - Chỉ chấp nhận `TLSv1.2` và `TLSv1.3` (chặn POODLE/BEAST/Heartbleed).
-  - Cipher suite chỉ gồm **AEAD** (`AES-GCM`, `ChaCha20-Poly1305`) với ECDHE forward-secrecy.
-  - OCSP stapling, session cache, HSTS 1 năm.
-- `Dockerfile` mở `EXPOSE 443` và tạo thư mục `/etc/nginx/certs`.
-- `docker-compose.yml` đã mount `./cdn-sim/certs:/etc/nginx/certs:ro` và map port `8443:443`.
+- `listen 443 ssl` + `http2 on`, chỉ chấp nhận `TLSv1.2 / TLSv1.3` (chặn POODLE/BEAST/Heartbleed).
+- Cipher suite chỉ gồm **AEAD** (`AES-GCM`, `ChaCha20-Poly1305`) với ECDHE forward-secrecy. TLS 1.3 ciphers được pin qua `ssl_conf_command`.
+- **HSTS** `max-age=31536000; includeSubDomains` trên mọi response HTTPS — sau lần truy cập đầu, browser tự ép HTTPS cho 1 năm.
+- **Cert pinning header** `X-CDN-Cert-Pin: sha256-<base64-spki>` (RFC 7469) — Player browser kiểm tra giá trị này so với danh sách hardcode trong `player/src/config/certPins.ts` để fail-fast khi MITM.
+- Hardening header phụ: `X-Content-Type-Options nosniff`, `Referrer-Policy no-referrer`, `X-Frame-Options DENY`.
 
-**Kích hoạt TLS (khi cần demo):**
+`entrypoint.sh` được container chạy ở PID 1: tự tính SPKI SHA-256 từ cert đang mount, sinh `/etc/nginx/conf.d/00-cert-pin.conf` với biến `$cdn_cert_pin`. Nếu host KHÔNG mount cert, entrypoint sinh cert tạm 30 ngày để nginx vẫn boot HTTPS — log sẽ ghi rõ `(ephemeral)`.
+
+**Kích hoạt TLS (full flow):**
 
 ```bash
-# 1. Sinh self-signed cert để test nội bộ
+# 1. Sinh self-signed cert + xuất pin SHA-256
 cd cdn-sim
-bash gen-selfsigned-cert.sh          # tạo certs/fullchain.pem + privkey.pem
+bash gen-selfsigned-cert.sh          # → certs/fullchain.pem, privkey.pem, pin.sha256.txt
+# Windows:
+pwsh -File gen-selfsigned-cert.ps1
 
-# 2. Bỏ comment block 'server { listen 443 ssl ... }' trong nginx.conf
+# 2. Copy pin từ pin.sha256.txt vào player/src/config/certPins.ts
+cat certs/pin.sha256.txt
+# → sha256-<base64> ; paste vào CDN_CERT_PIN_CONFIG.pins
 
-# 3. Rebuild
+# 3. Build & up cdn-sim
 docker compose -f ../infra/docker-compose.yml up -d --build cdn-sim
 
-# 4. Test
+# 4. Verify TLS + HSTS + pin header
+bash test-tls.sh
+# ✅ T1.6 TLS PASS — HTTPS sẵn sàng + cert pin hoạt động.
+
+# 5. Quick curl
 curl -kI https://localhost:8443/healthz
+# HTTP/2 200
+# strict-transport-security: max-age=31536000; includeSubDomains
+# x-cdn-cert-pin: sha256-...
 ```
 
-Production: thay self-signed bằng cert từ Let's Encrypt / CA nội bộ, đồng thời **bỏ comment `return 301 https://...`** ở server HTTP để ép HTTPS.
+**Cách Player verify pin:**
+
+`player/src/security/certPinning.ts` đăng ký response filter trên Shaka NetworkingEngine. Mọi response từ origin trong `pinnedOrigins` (cdn-sim HTTPS) đều được kiểm header `X-CDN-Cert-Pin` so với pin hardcode. 3 chế độ:
+
+| Mode | Hành vi khi mismatch |
+|---|---|
+| `off` | Bỏ qua — dùng khi disable PoC. |
+| `warn` | Log cảnh báo, vẫn cho phát (mặc định dev). |
+| `enforce` | Throw → Shaka coi là network error → fail manifest/segment/license. |
+
+Production: chuyển `mode: 'enforce'` trước khi build prod. Browser đã validate cert qua OS trust store, pin là **lớp 2** chống cert giả mạo dù attacker có CA hợp lệ.
 
 ### 2.4 Gia cố phụ (bonus)
 
@@ -136,3 +158,5 @@ Biến môi trường:
 - [ ] Tích hợp **Signed URL / Signed Cookie** (HMAC-SHA256) cho `/video/*.m4s`.
 - [ ] Thay self-signed bằng cert nội bộ CA của trường / Let's Encrypt ACME.
 - [ ] Bật HTTP/3 (QUIC) khi lên production để giảm latency khởi đầu.
+- [ ] Pin rotation: thêm endpoint `/.well-known/cert-pins.json` để Player tải dynamic.
+- [ ] Tự động drop port 80 ở edge LB (Cloudflare/AWS ALB) thay vì chỉ rely HSTS.

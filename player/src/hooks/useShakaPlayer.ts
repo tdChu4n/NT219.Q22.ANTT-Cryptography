@@ -9,6 +9,12 @@ import shakaImport from 'shaka-player/dist/shaka-player.compiled';
 const shaka = shakaImport as any;
 
 import type { MockManifest } from '../mocks/manifests';
+import {
+  createPinResponseFilter,
+  type PinCheckEvent,
+  type PinCheckOutcome,
+} from '../security/certPinning';
+import { CDN_CERT_PIN_CONFIG } from '../config/certPins';
 
 // ---------------------------------------------------------------------------
 //  Hook tích hợp Shaka Player với React — Task T1.7
@@ -104,6 +110,33 @@ const EMPTY_DRM_INFO: DrmInfo = {
   history: [],
 };
 
+/**
+ * Tóm tắt trạng thái cert pinning trên các response có origin nằm trong
+ * `pinnedOrigins` (xem config/certPins.ts).
+ */
+export type PinStatus = {
+  mode: 'off' | 'warn' | 'enforce';
+  /** Outcome gần nhất của một pin check (sau khi đã skip relative URI). */
+  lastOutcome: PinCheckOutcome | null;
+  /** Pin SHA-256 base64 quan sát thấy lần gần nhất. */
+  lastReceivedPin: string | null;
+  /** Origin của response gần nhất bị pin check. */
+  lastOrigin: string | null;
+  /** Bộ đếm theo outcome (ok/missing/mismatch/skipped). */
+  counts: Record<PinCheckOutcome, number>;
+  /** Lịch sử ngắn (8 sự kiện). */
+  history: PinCheckEvent[];
+};
+
+const EMPTY_PIN_STATUS: PinStatus = {
+  mode: CDN_CERT_PIN_CONFIG.mode,
+  lastOutcome: null,
+  lastReceivedPin: null,
+  lastOrigin: null,
+  counts: { ok: 0, skipped: 0, missing: 0, mismatch: 0 },
+  history: [],
+};
+
 export type LoadOptions = {
   /**
    * Khi bật, override toàn bộ license server của manifest về `/license`
@@ -118,6 +151,7 @@ export type UseShakaPlayerReturn = {
   error: string | null;
   tracks: ShakaTrack[];
   drmInfo: DrmInfo;
+  pinStatus: PinStatus;
   load: (manifest: MockManifest, opts?: LoadOptions) => Promise<void>;
   unload: () => Promise<void>;
   selectTrack: (trackId: number) => void;
@@ -157,6 +191,7 @@ export function useShakaPlayer(
   const [tracks, setTracks] = useState<ShakaTrack[]>([]);
   const [abrEnabled, setAbrEnabled] = useState(true);
   const [drmInfo, setDrmInfo] = useState<DrmInfo>(EMPTY_DRM_INFO);
+  const [pinStatus, setPinStatus] = useState<PinStatus>(EMPTY_PIN_STATUS);
 
   // Bộ đếm bytes của request gần nhất (đo trong request filter, đọc lại
   // trong response filter). Dùng Map<uri, bytes> để hỗ trợ song song
@@ -287,10 +322,40 @@ export function useShakaPlayer(
     networkingEngine.registerRequestFilter(onLicenseRequest);
     networkingEngine.registerResponseFilter(onLicenseResponse);
 
+    // ---- Cert pinning response filter ----
+    // Chạy cho MỌI loại request (manifest, segment, license) — bao quát
+    // toàn bộ traffic tới cdn-sim. Khi mode=enforce + pin mismatch,
+    // filter throw → Shaka coi là network error → manifest/segment fail.
+    const pinFilter = createPinResponseFilter(
+      CDN_CERT_PIN_CONFIG,
+      (ev) => {
+        setPinStatus((prev) => ({
+          ...prev,
+          mode: ev.mode,
+          lastOutcome: ev.outcome,
+          lastReceivedPin: ev.receivedPin ?? prev.lastReceivedPin,
+          lastOrigin: ev.origin || prev.lastOrigin,
+          counts: {
+            ...prev.counts,
+            [ev.outcome]: prev.counts[ev.outcome] + 1,
+          },
+          // Chỉ giữ history các sự kiện không phải skipped (giảm noise)
+          // — skipped vẫn cộng vào counts để dev biết tỉ lệ origin
+          // KHÔNG nằm trong pin list.
+          history:
+            ev.outcome === 'skipped'
+              ? prev.history
+              : [ev, ...prev.history].slice(0, 8),
+        }));
+      },
+    );
+    networkingEngine.registerResponseFilter(pinFilter);
+
     return () => {
       try {
         networkingEngine.unregisterRequestFilter(onLicenseRequest);
         networkingEngine.unregisterResponseFilter(onLicenseResponse);
+        networkingEngine.unregisterResponseFilter(pinFilter);
       } catch {
         // NetworkingEngine có thể đã bị destroy cùng player — bỏ qua.
       }
@@ -316,6 +381,7 @@ export function useShakaPlayer(
         ...EMPTY_DRM_INFO,
         keyIds: manifest.keyId ? [manifest.keyId] : [],
       });
+      setPinStatus({ ...EMPTY_PIN_STATUS });
 
       // ---- DRM config -----------------------------------------------------
       // - servers[keySystem]: license endpoint chính.
@@ -434,6 +500,7 @@ export function useShakaPlayer(
     setStatus('idle');
     setTracks([]);
     setDrmInfo(EMPTY_DRM_INFO);
+    setPinStatus(EMPTY_PIN_STATUS);
   }, []);
 
   const selectTrack = useCallback((trackId: number) => {
@@ -460,6 +527,7 @@ export function useShakaPlayer(
     error,
     tracks,
     drmInfo,
+    pinStatus,
     load,
     unload,
     selectTrack,

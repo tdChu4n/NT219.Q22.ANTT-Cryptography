@@ -1,8 +1,9 @@
-import type { DrmInfo } from '../hooks/useShakaPlayer';
+import type { DrmInfo, PinStatus } from '../hooks/useShakaPlayer';
 import styles from './LicensePanel.module.css';
 
 type Props = {
   drmInfo: DrmInfo;
+  pinStatus: PinStatus;
   /** Khi bật → Player override licenseServer về /license (cdn-sim → license-server). */
   overrideToInternal: boolean;
   onToggleOverride: (next: boolean) => void;
@@ -61,25 +62,59 @@ function formatRobustness(level: string | null): string {
   }
 }
 
+function pinBadgeLabel(s: PinStatus): {
+  label: string;
+  tone: 'ok' | 'warn' | 'err' | 'idle';
+} {
+  if (s.lastOutcome == null) return { label: 'Pin · idle', tone: 'idle' };
+  switch (s.lastOutcome) {
+    case 'ok':
+      return { label: 'Pin OK', tone: 'ok' };
+    case 'mismatch':
+      return { label: 'Pin MISMATCH', tone: 'err' };
+    case 'missing':
+      return { label: 'Pin missing', tone: 'warn' };
+    case 'skipped':
+    default:
+      return { label: 'Pin · n/a', tone: 'idle' };
+  }
+}
+
+function shortPin(pin: string | null): string {
+  if (!pin) return '—';
+  if (pin.length <= 32) return pin;
+  return `${pin.slice(0, 16)}…${pin.slice(-12)}`;
+}
+
 export default function LicensePanel({
   drmInfo,
+  pinStatus,
   overrideToInternal,
   onToggleOverride,
   disabled,
 }: Props) {
   const hasDrm = !!drmInfo.keySystem;
+  const pinBadge = pinBadgeLabel(pinStatus);
 
   return (
     <section className={styles.wrap}>
       <div className={styles.headerRow}>
         <h3 className={styles.heading}>EME · License Flow</h3>
-        <span
-          className={`${styles.pill} ${
-            hasDrm ? styles.pillActive : styles.pillIdle
-          }`}
-        >
-          {hasDrm ? 'CENC · Widevine' : 'Clear (no DRM)'}
-        </span>
+        <div className={styles.headerBadges}>
+          <span
+            className={`${styles.pill} ${
+              hasDrm ? styles.pillActive : styles.pillIdle
+            }`}
+          >
+            {hasDrm ? 'CENC · Widevine' : 'Clear (no DRM)'}
+          </span>
+          <span
+            className={`${styles.pill} ${styles[`pinPill_${pinBadge.tone}`]}`}
+            title={`Pin mode: ${pinStatus.mode}`}
+          >
+            {pinBadge.label}
+          </span>
+        </div>
       </div>
 
       <dl className={styles.kv}>
@@ -117,6 +152,39 @@ export default function LicensePanel({
           )}
         </dd>
       </dl>
+
+      <div className={styles.pinBox}>
+        <div className={styles.pinHead}>
+          <strong>Cert Pinning</strong>
+          <span className={styles.pinMode}>mode: {pinStatus.mode}</span>
+        </div>
+        <dl className={styles.pinKv}>
+          <dt>Last origin</dt>
+          <dd>
+            <code>{pinStatus.lastOrigin ?? '—'}</code>
+          </dd>
+          <dt>Received pin</dt>
+          <dd>
+            <code title={pinStatus.lastReceivedPin ?? ''}>
+              {shortPin(pinStatus.lastReceivedPin)}
+            </code>
+          </dd>
+        </dl>
+        <div className={styles.pinCounts}>
+          <span className={styles.pinCountOk}>
+            ok {pinStatus.counts.ok}
+          </span>
+          <span className={styles.pinCountWarn}>
+            missing {pinStatus.counts.missing}
+          </span>
+          <span className={styles.pinCountErr}>
+            mismatch {pinStatus.counts.mismatch}
+          </span>
+          <span className={styles.pinCountIdle}>
+            skipped {pinStatus.counts.skipped}
+          </span>
+        </div>
+      </div>
 
       <label
         className={`${styles.toggleRow} ${

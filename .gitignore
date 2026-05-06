@@ -239,6 +239,10 @@ Thumbs.db
 *.pem
 *.key
 *.crt
+# Pin SHA-256 sinh tự động bởi gen-selfsigned-cert.sh — tránh conflict khi
+# nhiều dev regenerate; pin "chính thức" được hardcode trong
+# player/src/config/certPins.ts.
+cdn-sim/certs/pin.sha256.txt
 !cdn-sim/certs/.gitkeep
 
 # Docker volumes / runtime

@@ -81,10 +81,28 @@ export const MOCK_MANIFESTS: MockManifest[] = [
     securityLevel: 'L3',
   },
   {
-    id: 'local-cdn-sim-widevine',
-    title: 'Local cdn-sim · Widevine (chờ T2.4/T2.5)',
+    id: 'local-cdn-sim-widevine-https',
+    title: 'Local cdn-sim · Widevine (HTTPS + cert pin)',
     description:
-      'Manifest do packager (Task T2.1–T2.3) sinh ra, phục vụ qua cdn-sim. License trỏ tới /license (proxy nội bộ). Dùng stub này để xác minh wiring; sẽ play OK khi license-server (T2.4/T2.5) phát hành key wrap RSA-OAEP.',
+      'Manifest do packager (T2.1–T2.3) sinh, phục vụ qua cdn-sim TLS 1.3 + HSTS. License đi qua HTTPS, Player kiểm tra X-CDN-Cert-Pin (RFC 7469) — đúng kịch bản T1.6.',
+    uri: 'https://localhost:8443/video/manifest.mpd',
+    format: 'DASH',
+    scheme: 'cenc',
+    drm: {
+      keySystem: 'com.widevine.alpha',
+      licenseServer: 'https://localhost:8443/license',
+    },
+    source: 'local',
+    securityLevel: 'L3',
+    keyId: '19d57c645156a5a0ddd23849e6377665',
+    notes:
+      'Trước khi chọn: chạy `bash cdn-sim/gen-selfsigned-cert.sh` rồi `docker compose up -d cdn-sim license-server`. Trust cert tạm trong OS để tránh ERR_CERT_AUTHORITY_INVALID. Cập nhật pin trong player/src/config/certPins.ts.',
+  },
+  {
+    id: 'local-cdn-sim-widevine-http',
+    title: 'Local cdn-sim · Widevine (HTTP dev fallback)',
+    description:
+      'Cùng manifest packager nhưng đi qua HTTP — fallback khi chưa generate cert hoặc đang debug HTTPS. License trỏ /license (Vite proxy → cdn-sim → license-server).',
     uri: 'http://localhost:8080/video/manifest.mpd',
     format: 'DASH',
     scheme: 'cenc',
@@ -96,7 +114,7 @@ export const MOCK_MANIFESTS: MockManifest[] = [
     securityLevel: 'L3',
     keyId: '19d57c645156a5a0ddd23849e6377665',
     notes:
-      'Yêu cầu chạy `docker compose up cdn-sim license-server`. License server hiện trả mock — Player sẽ báo lỗi DRM cho tới khi T2.4 (JWT/RSA-OAEP) hoàn thành.',
+      'HTTP-only path: cert pinning sẽ skip, T2.4/T2.5 vẫn chưa wire JWT — Player sẽ báo lỗi DRM cho tới khi license-server phát license thật.',
   },
   {
     id: 'shaka-angel-one',

@@ -14,6 +14,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.headerBadges {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
 }
 
 .heading {
@@ -44,6 +51,122 @@
 .pillIdle {
   color: var(--fg-muted);
   background: var(--bg-elev-2);
+}
+
+.pinPill_ok {
+  color: #86eab1;
+  background: rgba(46, 204, 113, 0.16);
+  border-color: rgba(46, 204, 113, 0.45);
+}
+
+.pinPill_warn {
+  color: #ffd767;
+  background: rgba(245, 180, 0, 0.16);
+  border-color: rgba(245, 180, 0, 0.45);
+}
+
+.pinPill_err {
+  color: #ffb3a8;
+  background: rgba(255, 107, 107, 0.16);
+  border-color: rgba(255, 107, 107, 0.55);
+}
+
+.pinPill_idle {
+  color: var(--fg-muted);
+  background: var(--bg-elev-2);
+}
+
+.pinBox {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pinHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  letter-spacing: 0.2px;
+}
+
+.pinHead strong {
+  color: var(--fg);
+}
+
+.pinMode {
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.08rem 0.45rem;
+}
+
+.pinKv {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  row-gap: 0.25rem;
+  column-gap: 0.5rem;
+  font-size: 0.78rem;
+}
+
+.pinKv dt {
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.3px;
+  align-self: center;
+}
+
+.pinKv dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.pinKv code {
+  font-size: 0.74rem;
+  background: var(--bg-elev);
+}
+
+.pinCounts {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pinCounts span {
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+
+.pinCountOk {
+  color: var(--success);
+  border-color: rgba(46, 204, 113, 0.4) !important;
+}
+
+.pinCountWarn {
+  color: var(--warning);
+  border-color: rgba(245, 180, 0, 0.4) !important;
+}
+
+.pinCountErr {
+  color: var(--danger);
+  border-color: rgba(255, 107, 107, 0.4) !important;
+}
+
+.pinCountIdle {
+  color: var(--fg-muted);
 }
 
 .kv {

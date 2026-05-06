@@ -1,23 +1,31 @@
-# T3.1: Sinh Self-Signed Certificate cho CDN-sim (TLS 1.3)
+# =====================================================================
+# Task T1.6 · Sinh Self-Signed Certificate cho cdn-sim (TLS 1.3 + Pin)
 # Chạy: pwsh -File cdn-sim/gen-selfsigned-cert.ps1
-# Yêu cầu: OpenSSL phải được cài và có trong PATH
+# Yêu cầu: OpenSSL trong PATH (Git for Windows / Chocolatey installed).
+#
+# Output (tương thích với gen-selfsigned-cert.sh):
+#   cdn-sim/certs/fullchain.pem
+#   cdn-sim/certs/privkey.pem
+#   cdn-sim/certs/pin.sha256.txt    (RFC 7469: sha256-<base64>)
+# =====================================================================
 
-$CertsDir = "$PSScriptRoot\certs"
-$KeyFile   = "$CertsDir\privkey.pem"
-$CertFile  = "$CertsDir\fullchain.pem"
-$FingerprintFile = "$CertsDir\fingerprint.sha256.txt"
+$CertsDir = Join-Path $PSScriptRoot "certs"
+$KeyFile  = Join-Path $CertsDir "privkey.pem"
+$CertFile = Join-Path $CertsDir "fullchain.pem"
+$PinFile  = Join-Path $CertsDir "pin.sha256.txt"
+$SanCnf   = Join-Path $CertsDir "san.cnf"
 
 if (-not (Test-Path $CertsDir)) {
     New-Item -ItemType Directory -Path $CertsDir | Out-Null
 }
 
-Write-Host "[1/3] Sinh RSA-2048 Private Key..." -ForegroundColor Cyan
-openssl genrsa -out $KeyFile 2048
+Write-Host "[1/3] Sinh RSA-2048 private key..." -ForegroundColor Cyan
+openssl genrsa -out $KeyFile 2048 2>$null
+if ($LASTEXITCODE -ne 0) { throw "openssl genrsa failed" }
 
-Write-Host "[2/3] Sinh Self-Signed Certificate (365 ngày, SAN: localhost + cdn.drm-local.dev)..." -ForegroundColor Cyan
+Write-Host "[2/3] Sinh self-signed cert (365 ngày, SAN: localhost + cdn.local + cdn-sim)..." -ForegroundColor Cyan
 
-# Tạo config file tạm để thêm SAN (Subject Alternative Names)
-$SanConfig = @"
+$SanContent = @"
 [req]
 default_bits       = 2048
 prompt             = no
@@ -27,47 +35,55 @@ x509_extensions    = v3_req
 
 [dn]
 C  = VN
-ST = Ho Chi Minh
-L  = Ho Chi Minh
-O  = NT219 DRM Lab
-OU = Security
-CN = cdn.drm-local.dev
+ST = HCM
+L  = UIT
+O  = NT219
+OU = Capstone
+CN = cdn.local
 
 [v3_req]
-subjectAltName = @alt_names
-keyUsage       = digitalSignature, keyEncipherment
+subjectAltName   = @alt_names
+keyUsage         = digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
 
 [alt_names]
-DNS.1 = localhost
-DNS.2 = cdn.drm-local.dev
-DNS.3 = license-server
+DNS.1 = cdn.local
+DNS.2 = localhost
+DNS.3 = cdn-sim
 IP.1  = 127.0.0.1
 "@
 
-$SanConfig | Out-File -FilePath "$CertsDir\san.cnf" -Encoding ascii
+$SanContent | Out-File -FilePath $SanCnf -Encoding ascii
+openssl req -new -x509 -key $KeyFile -out $CertFile -days 365 -config $SanCnf 2>$null
+Remove-Item $SanCnf -ErrorAction SilentlyContinue
+if ($LASTEXITCODE -ne 0) { throw "openssl req failed" }
 
-openssl req -new -x509 -key $KeyFile -out $CertFile -days 365 -config "$CertsDir\san.cnf"
+Write-Host "[3/3] Tính SPKI SHA-256 (RFC 7469) cho cert pinning..." -ForegroundColor Cyan
 
-# Xóa config tạm
-Remove-Item "$CertsDir\san.cnf"
+# Pipeline qua PowerShell stream để tương thích Windows (`|` không gọi tiếp openssl
+# trực tiếp tốt như bash). Dùng tệp tạm trung gian.
+$DerTmp = Join-Path $CertsDir "spki.der"
+openssl x509 -in $CertFile -pubkey -noout 2>$null | openssl pkey -pubin -outform DER -out $DerTmp 2>$null
+$PinRaw = (openssl dgst -sha256 -binary $DerTmp | openssl base64 -A)
+Remove-Item $DerTmp -ErrorAction SilentlyContinue
 
-Write-Host "[3/3] Tính fingerprint SHA-256 (dùng để Cert Pinning trong Player)..." -ForegroundColor Cyan
-$FingerprintRaw = openssl x509 -in $CertFile -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256 -binary | openssl base64
-"# SHA-256 Public Key Fingerprint (dùng trong Player cert pinning)" | Out-File $FingerprintFile
-"# Cập nhật giá trị này vào player/src/config/certPins.ts" | Out-File $FingerprintFile -Append
-$FingerprintRaw | Out-File $FingerprintFile -Append
+@(
+    "# SHA-256 SPKI pin của cdn-sim (RFC 7469 format)."
+    "# Sinh tự động bởi gen-selfsigned-cert.ps1 — copy giá trị bên dưới"
+    "# sang player/src/config/certPins.ts cho strict pinning."
+    "sha256-$PinRaw"
+) | Out-File -FilePath $PinFile -Encoding ascii
 
 Write-Host ""
 Write-Host "=== DONE ===" -ForegroundColor Green
-Write-Host "Private Key : $KeyFile"
-Write-Host "Certificate : $CertFile"
-Write-Host "Fingerprint : $FingerprintFile"
+Write-Host "  Private key : $KeyFile"
+Write-Host "  Certificate : $CertFile"
+Write-Host "  Pin file    : $PinFile"
 Write-Host ""
-Write-Host "Fingerprint SHA-256 (copy vào certPins.ts):"
-Write-Host $FingerprintRaw -ForegroundColor Yellow
+Write-Host "Pin SHA-256 (copy vào player/src/config/certPins.ts):" -ForegroundColor Yellow
+Write-Host "  sha256-$PinRaw" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Tiếp theo:"
-Write-Host "  1. Chạy: docker compose up --build"
-Write-Host "  2. Mở: https://localhost:443/healthz (chấp nhận warning cert tự ký)"
-Write-Host "  3. Cập nhật fingerprint vào player/src/config/certPins.ts"
+Write-Host "  1. docker compose -f infra/docker-compose.yml up -d --build cdn-sim"
+Write-Host "  2. curl -kI https://localhost:8443/healthz   (phải có HSTS + X-CDN-Cert-Pin)"
+Write-Host "  3. Cập nhật pin vào player/src/config/certPins.ts rồi npm run dev"

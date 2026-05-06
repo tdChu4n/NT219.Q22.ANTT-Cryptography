@@ -116,6 +116,7 @@ export default function App() {
 
           <LicensePanel
             drmInfo={shaka.drmInfo}
+            pinStatus={shaka.pinStatus}
             overrideToInternal={overrideToInternal}
             onToggleOverride={handleToggleOverride}
             disabled={!isCurrentDrm || shaka.status === 'loading'}
