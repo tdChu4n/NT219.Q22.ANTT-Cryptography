@@ -4,6 +4,7 @@ import VideoPlayer from './components/VideoPlayer';
 import ManifestSelector from './components/ManifestSelector';
 import QualityPanel from './components/QualityPanel';
 import ContentInfo from './components/ContentInfo';
+import LicensePanel from './components/LicensePanel';
 import {
   DEFAULT_MANIFEST_ID,
   MOCK_MANIFESTS,
@@ -16,7 +17,12 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedId, setSelectedId] = useState(DEFAULT_MANIFEST_ID);
   const [customUri, setCustomUri] = useState('');
-  const [activeManifest, setActiveManifest] = useState<MockManifest | null>(null);
+  const [activeManifest, setActiveManifest] = useState<MockManifest | null>(
+    null,
+  );
+  // Override license URL về /license (Vite proxy → cdn-sim → license-server).
+  // Mặc định OFF — khi T2.4/T2.5 wire xong sẽ bật để chạy luồng nội bộ.
+  const [overrideToInternal, setOverrideToInternal] = useState(false);
 
   const shaka = useShakaPlayer(videoRef);
 
@@ -25,23 +31,27 @@ export default function App() {
     [selectedId],
   );
 
-  // Tự load manifest mặc định 1 lần khi player attach xong (status === 'idle')
+  const loadManifest = (m: MockManifest) =>
+    shaka
+      .load(m, { overrideToInternalLicense: overrideToInternal })
+      .then(() => setActiveManifest(m));
+
+  // Tự load manifest mặc định 1 lần khi player attach xong (status === 'idle').
   useEffect(() => {
     if (!selectedManifest || activeManifest || shaka.status !== 'idle') return;
-    void shaka.load(selectedManifest).then(() => setActiveManifest(selectedManifest));
-  }, [selectedManifest, activeManifest, shaka]);
+    void loadManifest(selectedManifest);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedManifest, activeManifest, shaka.status]);
 
   const handleSelect = (id: string) => {
     setSelectedId(id);
     const next = MOCK_MANIFESTS.find((m) => m.id === id);
-    if (next) {
-      void shaka.load(next).then(() => setActiveManifest(next));
-    }
+    if (next) void loadManifest(next);
   };
 
   const handleReload = () => {
     if (!selectedManifest) return;
-    void shaka.load(selectedManifest).then(() => setActiveManifest(selectedManifest));
+    void loadManifest(selectedManifest);
   };
 
   const handleLoadCustom = () => {
@@ -55,9 +65,22 @@ export default function App() {
       format: uri.endsWith('.m3u8') ? 'HLS' : 'DASH',
       scheme: 'clear',
       source: 'public',
+      securityLevel: 'CLEAR',
     };
-    void shaka.load(custom).then(() => setActiveManifest(custom));
+    void loadManifest(custom);
   };
+
+  const handleToggleOverride = (next: boolean) => {
+    setOverrideToInternal(next);
+    if (selectedManifest) {
+      // Reload ngay với override mới để CDM đẩy challenge sang endpoint kế tiếp.
+      void shaka
+        .load(selectedManifest, { overrideToInternalLicense: next })
+        .then(() => setActiveManifest(selectedManifest));
+    }
+  };
+
+  const isCurrentDrm = !!selectedManifest?.drm?.keySystem;
 
   const statusLabel =
     shaka.status === 'ready'
@@ -90,6 +113,13 @@ export default function App() {
           </div>
 
           <ContentInfo manifest={activeManifest} />
+
+          <LicensePanel
+            drmInfo={shaka.drmInfo}
+            overrideToInternal={overrideToInternal}
+            onToggleOverride={handleToggleOverride}
+            disabled={!isCurrentDrm || shaka.status === 'loading'}
+          />
         </section>
 
         <aside className={styles.sideCol}>
@@ -115,10 +145,19 @@ export default function App() {
           <section className={styles.roadmap}>
             <h3>Roadmap · Sprint kế tiếp</h3>
             <ul>
-              <li>T2 · Tích hợp License Server (RSA-OAEP + JWT)</li>
-              <li>T3 · Widevine/PlayReady request filter</li>
-              <li>T4 · Telemetry + QoE metrics</li>
-              <li>T5 · Watermark overlay (user-id)</li>
+              <li>
+                <strong>T1.7 ✓</strong> Player EME → /license (demo Widevine
+                L3)
+              </li>
+              <li>
+                <strong>T2.4</strong> License Server: JWT entitlement +
+                RSA-OAEP key wrap
+              </li>
+              <li>
+                <strong>T2.5</strong> Device attestation + nonce chống replay
+              </li>
+              <li>T3 · Watermark overlay (user-id forensic)</li>
+              <li>T4 · Telemetry + QoE metrics (license latency, TTFF)</li>
             </ul>
           </section>
         </aside>
@@ -126,7 +165,7 @@ export default function App() {
 
       <footer className={styles.footer}>
         <span>
-          NT219 · Capstone — Player scaffold (Task T1.7) · React {/* note */}
+          NT219 · Capstone — Player T1.7 (EME → /license → Widevine L3) ·{' '}
           <code>Vite + Shaka Player</code>
         </span>
       </footer>

@@ -1,13 +1,21 @@
 // ---------------------------------------------------------------------------
 //  Mock manifest list — Task T1.7
 //
-//  Mục tiêu của task: Player load được manifest *mock* khi `npm run dev`.
-//  Chúng ta gộp 2 nhóm nguồn:
-//   1. Public demo (Shaka + DASH-IF) — dùng ngay khi chưa có cdn-sim.
-//   2. Local cdn-sim (Task T1.6) — khi stack infra đang chạy, Player
-//      dev proxy /video → http://localhost:8080/video (xem vite.config.ts).
+//  Mục tiêu của task: Player thực thi đầy đủ luồng EME (Encrypted Media
+//  Extensions) — Player → CDM → /license → giải mã → render — và demo OK
+//  trên Chrome với Widevine L3 (software CDM).
 //
-//  Field `drm` để sprint sau (Lộc/Chuẩn) gắn laurent License Server thật.
+//  Chiến lược nguồn dữ liệu trong file này:
+//   1. Public test asset (Shaka + DASH-IF) — phát ngay khi mới `npm run dev`,
+//      không phụ thuộc license-server nội bộ. Dùng `cwip-shaka-proxy` để
+//      lấy license Widevine test KIDs.
+//   2. Local cdn-sim (Task T1.6) — manifest do shaka-packager tạo (Task
+//      T2.1/T2.2/T2.3 đã có CENC + PSSH Widevine), license trỏ về
+//      `/license` (Vite proxy → cdn-sim → license-server). Stub này
+//      sẽ "go live" khi T2.4/T2.5 hoàn thành (RSA-OAEP + JWT).
+//
+//  Field `securityLevel` chỉ là metadata để hiển thị; Player thực sự ép
+//  Widevine L3 trong useShakaPlayer (xem advanced.videoRobustness).
 // ---------------------------------------------------------------------------
 
 export type DrmConfig = {
@@ -31,34 +39,20 @@ export type MockManifest = {
   source: 'public' | 'local';
   /** Poster tuỳ chọn (ảnh public được browser cache, an toàn cho demo). */
   poster?: string;
+  /** Mô tả mức bảo vệ Widevine: L1 (TEE) / L3 (software CDM). */
+  securityLevel?: 'L1' | 'L3' | 'CLEAR';
+  /** KID hex 32 ký tự — copy từ packager output để hiển thị trong panel. */
+  keyId?: string;
+  /** Ghi chú vận hành (vd: cần chạy stack docker, đang chờ T2.x …). */
+  notes?: string;
 };
 
 export const MOCK_MANIFESTS: MockManifest[] = [
   {
-    id: 'shaka-angel-one',
-    title: 'Angel One (Shaka demo)',
-    description:
-      'Clip giới thiệu — manifest clear của Shaka Player, dùng để kiểm tra pipeline MSE/EME đã sẵn sàng.',
-    uri: 'https://storage.googleapis.com/shaka-demo-assets/angel-one/dash.mpd',
-    format: 'DASH',
-    scheme: 'clear',
-    source: 'public',
-  },
-  {
-    id: 'dash-if-bbb',
-    title: 'Big Buck Bunny (DASH-IF 30 fps)',
-    description:
-      'Manifest DASH chuẩn của DASH-IF. Test ABR (nhiều rendition 360p/720p/1080p).',
-    uri: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd',
-    format: 'DASH',
-    scheme: 'clear',
-    source: 'public',
-  },
-  {
     id: 'shaka-sintel-widevine',
-    title: 'Sintel (Widevine, encrypted demo)',
+    title: 'Sintel · Widevine L3 (Demo EME)',
     description:
-      'Manifest đã mã hoá bằng Widevine test key — để sprint sau khi License Server sẵn sàng, thay licenseServer bằng endpoint nội bộ.',
+      'Asset Widevine test của Shaka Player. License lấy từ proxy công khai cwip-shaka-proxy. Đây là asset chính để xác minh pipeline EME → /license → giải mã.',
     uri: 'https://storage.googleapis.com/shaka-demo-assets/sintel-widevine/dash.mpd',
     format: 'DASH',
     scheme: 'cenc',
@@ -67,16 +61,64 @@ export const MOCK_MANIFESTS: MockManifest[] = [
       licenseServer: 'https://cwip-shaka-proxy.appspot.com/no_auth',
     },
     source: 'public',
+    securityLevel: 'L3',
+    notes:
+      'Demo Chrome desktop OK với Widevine L3 (SW_SECURE_CRYPTO). Khi T2.4/T2.5 sẵn sàng, bật toggle "Override → /license" để route license qua cdn-sim.',
   },
   {
-    id: 'local-cdn-sim-demo',
-    title: 'Local cdn-sim (packager output)',
+    id: 'shaka-tos-widevine',
+    title: 'Tears of Steel · Widevine L3',
     description:
-      'Manifest được sinh bởi Task T1.5 (packager) + phục vụ qua cdn-sim đã hardened (Task T1.6). Chạy `docker compose up cdn-sim` rồi chọn mục này.',
+      'Asset thứ 2 dùng Widevine test KIDs của cwip-shaka-proxy — kiểm chéo rằng pipeline EME hoạt động ổn định trên nhiều bộ KID.',
+    uri: 'https://storage.googleapis.com/shaka-demo-assets/tos-mp4-cenc/dash.mpd',
+    format: 'DASH',
+    scheme: 'cenc',
+    drm: {
+      keySystem: 'com.widevine.alpha',
+      licenseServer: 'https://cwip-shaka-proxy.appspot.com/no_auth',
+    },
+    source: 'public',
+    securityLevel: 'L3',
+  },
+  {
+    id: 'local-cdn-sim-widevine',
+    title: 'Local cdn-sim · Widevine (chờ T2.4/T2.5)',
+    description:
+      'Manifest do packager (Task T2.1–T2.3) sinh ra, phục vụ qua cdn-sim. License trỏ tới /license (proxy nội bộ). Dùng stub này để xác minh wiring; sẽ play OK khi license-server (T2.4/T2.5) phát hành key wrap RSA-OAEP.',
     uri: 'http://localhost:8080/video/manifest.mpd',
     format: 'DASH',
-    scheme: 'clear',
+    scheme: 'cenc',
+    drm: {
+      keySystem: 'com.widevine.alpha',
+      licenseServer: '/license',
+    },
     source: 'local',
+    securityLevel: 'L3',
+    keyId: '19d57c645156a5a0ddd23849e6377665',
+    notes:
+      'Yêu cầu chạy `docker compose up cdn-sim license-server`. License server hiện trả mock — Player sẽ báo lỗi DRM cho tới khi T2.4 (JWT/RSA-OAEP) hoàn thành.',
+  },
+  {
+    id: 'shaka-angel-one',
+    title: 'Angel One (Shaka clear)',
+    description:
+      'Manifest clear, không EME. Dùng để kiểm tra pipeline MSE/ABR khi nghi ngờ vấn đề ngoài DRM.',
+    uri: 'https://storage.googleapis.com/shaka-demo-assets/angel-one/dash.mpd',
+    format: 'DASH',
+    scheme: 'clear',
+    source: 'public',
+    securityLevel: 'CLEAR',
+  },
+  {
+    id: 'dash-if-bbb',
+    title: 'Big Buck Bunny (DASH-IF clear)',
+    description:
+      'Manifest DASH chuẩn với nhiều rendition 360p/720p/1080p, dùng để kiểm tra ABR khi không có EME.',
+    uri: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd',
+    format: 'DASH',
+    scheme: 'clear',
+    source: 'public',
+    securityLevel: 'CLEAR',
   },
 ];
 

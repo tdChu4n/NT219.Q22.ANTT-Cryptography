@@ -5,6 +5,33 @@ type Props = {
   manifest: MockManifest | null;
 };
 
+function schemeLabel(scheme: MockManifest['scheme']): string {
+  switch (scheme) {
+    case 'clear':
+      return 'Clear';
+    case 'cenc':
+      return 'CENC · AES-128-CTR';
+    case 'cbcs':
+      return 'CBCS · AES-128-CBC';
+    default:
+      return scheme;
+  }
+}
+
+function levelLabel(level: MockManifest['securityLevel']): string | null {
+  if (!level) return null;
+  switch (level) {
+    case 'L1':
+      return 'Widevine L1 · TEE/HW';
+    case 'L3':
+      return 'Widevine L3 · Software CDM';
+    case 'CLEAR':
+      return 'No DRM';
+    default:
+      return level;
+  }
+}
+
 export default function ContentInfo({ manifest }: Props) {
   if (!manifest) {
     return (
@@ -14,15 +41,24 @@ export default function ContentInfo({ manifest }: Props) {
     );
   }
 
+  const level = levelLabel(manifest.securityLevel);
+
   return (
     <section className={styles.wrap}>
       <div className={styles.header}>
         <h2 className={styles.title}>{manifest.title}</h2>
         <div className={styles.badges}>
-          <span className={`${styles.badge} ${styles.badgeFormat}`}>{manifest.format}</span>
-          <span className={`${styles.badge} ${styles.badgeScheme}`}>
-            {manifest.scheme === 'clear' ? 'Clear' : manifest.scheme.toUpperCase()}
+          <span className={`${styles.badge} ${styles.badgeFormat}`}>
+            {manifest.format}
           </span>
+          <span className={`${styles.badge} ${styles.badgeScheme}`}>
+            {schemeLabel(manifest.scheme)}
+          </span>
+          {level && (
+            <span className={`${styles.badge} ${styles.badgeLevel}`}>
+              {level}
+            </span>
+          )}
           <span
             className={`${styles.badge} ${
               manifest.source === 'local' ? styles.badgeLocal : styles.badgePublic
@@ -50,6 +86,20 @@ export default function ContentInfo({ manifest }: Props) {
             <dd>
               <code>{manifest.drm.licenseServer}</code>
             </dd>
+          </>
+        )}
+        {manifest.keyId && (
+          <>
+            <dt>Default KID</dt>
+            <dd>
+              <code>{manifest.keyId}</code>
+            </dd>
+          </>
+        )}
+        {manifest.notes && (
+          <>
+            <dt>Ghi chú</dt>
+            <dd className={styles.notes}>{manifest.notes}</dd>
           </>
         )}
       </dl>

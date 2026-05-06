@@ -62,6 +62,12 @@
   background: rgba(125, 91, 255, 0.08);
 }
 
+.badgeLevel {
+  border-color: rgba(255, 107, 107, 0.4);
+  color: #ffb3a8;
+  background: rgba(255, 107, 107, 0.08);
+}
+
 .desc {
   margin: 0.5rem 0 1rem 0;
   color: var(--fg-muted);
@@ -84,6 +90,12 @@
 .meta dd {
   margin: 0;
   word-break: break-all;
+}
+
+.notes {
+  font-style: italic;
+  color: var(--fg-muted);
+  word-break: normal;
 }
 
 .empty {

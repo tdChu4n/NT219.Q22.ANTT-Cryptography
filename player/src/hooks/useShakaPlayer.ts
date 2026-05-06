@@ -13,10 +13,20 @@ import type { MockManifest } from '../mocks/manifests';
 // ---------------------------------------------------------------------------
 //  Hook tích hợp Shaka Player với React — Task T1.7
 //
+//  Mục tiêu sprint này:
+//    - Player chạy đầy đủ luồng EME: CDM phát challenge → fetch /license →
+//      Player nhận license → giải mã trong CDM → render frame.
+//    - Demo Chrome: ép Widevine L3 (SW_SECURE_CRYPTO) để mọi máy desktop
+//      không có TEE đều phát được nội dung Sintel/Widevine test.
+//    - Quan sát license latency & status để chuẩn bị cho T2.4/T2.5
+//      (license-server thật + JWT/RSA-OAEP).
+//
 //  Lifecycle:
 //    mount       → install polyfills (once) → tạo shaka.Player instance.
-//    load()      → cấu hình DRM, gọi player.load(uri), xử lý lỗi.
-//    unmount     → destroy player để tránh rò memory / event listener.
+//    load()      → cấu hình DRM (servers + advanced robustness), đăng ký
+//                  request/response filter trên NetworkingEngine, gọi
+//                  player.load(uri), thu thập drmInfo() của manifest.
+//    unmount     → destroy player + gỡ filter để tránh rò memory.
 // ---------------------------------------------------------------------------
 
 let polyfillsInstalled = false;
@@ -41,11 +51,74 @@ export type ShakaTrack = {
   label: string;
 };
 
+/**
+ * Một lượt yêu cầu license đã hoàn tất (thành công hoặc thất bại) — phục vụ
+ * panel theo dõi license latency và đo metric cho § 8.3 của README.
+ */
+export type DrmRequestStat = {
+  /** epoch ms khi response được quan sát. */
+  ts: number;
+  /** URI thực tế đã gọi (sau khi request filter có thể chỉnh sửa). */
+  uri: string;
+  /** OK nếu CDM nhận license; error nếu fail. */
+  status: 'ok' | 'error';
+  /** Network round-trip (ms) lấy từ Shaka response.timeMs. */
+  timeMs: number;
+  /** Kích thước challenge (license request body) gửi đi. */
+  requestBytes: number;
+  /** Kích thước license response (CDM payload) nhận về. */
+  responseBytes: number;
+  /** Thông điệp lỗi nếu có (Shaka error string). */
+  errorMessage?: string;
+};
+
+/**
+ * Tóm tắt pipeline EME khi player đã load xong manifest.
+ * - keySystem / licenseServer: do CDM + manifest negotiate.
+ * - videoRobustness/audioRobustness: Widevine L3 = SW_SECURE_CRYPTO,
+ *   L1 = HW_SECURE_*; ta ép L3 trong demo desktop.
+ */
+export type DrmInfo = {
+  keySystem: string | null;
+  licenseServer: string | null;
+  videoRobustness: string | null;
+  audioRobustness: string | null;
+  /** KID (default_KID) đọc từ manifest CENC, hex 32 ký tự. */
+  keyIds: string[];
+  /** Tổng số license request đã quan sát qua NetworkingEngine. */
+  licenseRequests: number;
+  /** Stat của request gần nhất. */
+  lastLicense: DrmRequestStat | null;
+  /** Lịch sử ngắn (giới hạn 8) — phục vụ panel & debug. */
+  history: DrmRequestStat[];
+};
+
+const EMPTY_DRM_INFO: DrmInfo = {
+  keySystem: null,
+  licenseServer: null,
+  videoRobustness: null,
+  audioRobustness: null,
+  keyIds: [],
+  licenseRequests: 0,
+  lastLicense: null,
+  history: [],
+};
+
+export type LoadOptions = {
+  /**
+   * Khi bật, override toàn bộ license server của manifest về `/license`
+   * (Vite proxy → cdn-sim → license-server). Hữu ích để xác minh wiring
+   * trước khi T2.4/T2.5 hoàn thành.
+   */
+  overrideToInternalLicense?: boolean;
+};
+
 export type UseShakaPlayerReturn = {
   status: ShakaStatus;
   error: string | null;
   tracks: ShakaTrack[];
-  load: (manifest: MockManifest) => Promise<void>;
+  drmInfo: DrmInfo;
+  load: (manifest: MockManifest, opts?: LoadOptions) => Promise<void>;
   unload: () => Promise<void>;
   selectTrack: (trackId: number) => void;
   enableAbr: (enabled: boolean) => void;
@@ -67,6 +140,13 @@ type ShakaError = {
   message?: string;
 };
 
+/**
+ * Đường dẫn nội bộ tới license-server (qua cdn-sim). Vite dev đã proxy
+ * `/license` → http://localhost:8080 (xem vite.config.ts), production
+ * sẽ phục vụ cùng origin với CDN nên giữ relative path.
+ */
+const INTERNAL_LICENSE_URL = '/license';
+
 export function useShakaPlayer(
   videoRef: React.RefObject<HTMLVideoElement | null>,
 ): UseShakaPlayerReturn {
@@ -76,6 +156,12 @@ export function useShakaPlayer(
   const [error, setError] = useState<string | null>(null);
   const [tracks, setTracks] = useState<ShakaTrack[]>([]);
   const [abrEnabled, setAbrEnabled] = useState(true);
+  const [drmInfo, setDrmInfo] = useState<DrmInfo>(EMPTY_DRM_INFO);
+
+  // Bộ đếm bytes của request gần nhất (đo trong request filter, đọc lại
+  // trong response filter). Dùng Map<uri, bytes> để hỗ trợ song song
+  // (audio + video license trong cùng một phim).
+  const pendingRequestBytesRef = useRef<Map<string, number>>(new Map());
 
   // ---- mount / unmount ---------------------------------------------------
   useEffect(() => {
@@ -95,8 +181,8 @@ export function useShakaPlayer(
       setError(`Attach failed: ${err.message}`);
       setStatus('error');
     });
+
     const onPlaying = () => {
-      // Nếu playback đã chạy lại, xoá trạng thái lỗi cũ để tránh overlay bám dai.
       setError(null);
       setStatus('ready');
     };
@@ -109,8 +195,6 @@ export function useShakaPlayer(
         detail.data ? detail.data.join(' ') : detail.message ?? 'unknown error'
       }`;
 
-      // Chỉ coi là fatal khi severity là CRITICAL.
-      // Lỗi recoverable vẫn có thể phát tiếp, không nên phủ overlay đỏ.
       const criticalSeverity = shaka?.util?.Error?.Severity?.CRITICAL ?? 2;
       const isCritical =
         detail.severity == null ? true : detail.severity === criticalSeverity;
@@ -121,7 +205,6 @@ export function useShakaPlayer(
         return;
       }
 
-      // Giữ trạng thái ready cho lỗi recoverable để UX không bị "đỏ màn hình".
       console.warn(`Recoverable playback warning: ${message}`);
     };
     player.addEventListener('error', onError);
@@ -144,7 +227,73 @@ export function useShakaPlayer(
     player.addEventListener('trackschanged', refreshTracks);
     player.addEventListener('adaptation', refreshTracks);
 
+    // ---- License request / response filters ------------------------------
+    // Đăng ký một lần khi mount; lifecycle gắn với player instance.
+    // RequestType.LICENSE = 2 trong Shaka v4. Đọc enum để code rõ ý đồ.
+    const RequestType = shaka.net.NetworkingEngine.RequestType;
+    const networkingEngine = player.getNetworkingEngine();
+
+    const onLicenseRequest = (
+      type: number,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      request: any,
+    ) => {
+      if (type !== RequestType.LICENSE) return;
+
+      // Headers phục vụ debug + chuẩn bị wire JWT khi T2.4/T2.5 sẵn sàng.
+      // Lưu ý: license-server ở task T2.4 sẽ verify Authorization Bearer.
+      request.headers = request.headers ?? {};
+      request.headers['X-Player-Build'] = 'NT219-T1.7';
+
+      // TODO[T2.4]: gắn JWT entitlement
+      //   request.headers['Authorization'] = `Bearer ${getEntitlementToken()}`;
+      // TODO[T2.5]: gửi device public key cho RSA-OAEP key wrap
+      //   request.headers['X-Device-Pubkey'] = base64(devicePubKey);
+
+      const uri = request.uris?.[0] ?? '<unknown>';
+      const bodyBytes =
+        request.body instanceof ArrayBuffer
+          ? request.body.byteLength
+          : request.body?.byteLength ?? 0;
+      pendingRequestBytesRef.current.set(uri, bodyBytes);
+    };
+
+    const onLicenseResponse = (
+      type: number,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      response: any,
+    ) => {
+      if (type !== RequestType.LICENSE) return;
+      const uri = response.uri ?? response.originalUri ?? '<unknown>';
+      const requestBytes = pendingRequestBytesRef.current.get(uri) ?? 0;
+      pendingRequestBytesRef.current.delete(uri);
+
+      const stat: DrmRequestStat = {
+        ts: Date.now(),
+        uri,
+        status: 'ok',
+        timeMs: response.timeMs ?? 0,
+        requestBytes,
+        responseBytes: response.data?.byteLength ?? 0,
+      };
+      setDrmInfo((prev) => ({
+        ...prev,
+        licenseRequests: prev.licenseRequests + 1,
+        lastLicense: stat,
+        history: [stat, ...prev.history].slice(0, 8),
+      }));
+    };
+
+    networkingEngine.registerRequestFilter(onLicenseRequest);
+    networkingEngine.registerResponseFilter(onLicenseResponse);
+
     return () => {
+      try {
+        networkingEngine.unregisterRequestFilter(onLicenseRequest);
+        networkingEngine.unregisterResponseFilter(onLicenseResponse);
+      } catch {
+        // NetworkingEngine có thể đã bị destroy cùng player — bỏ qua.
+      }
       player.removeEventListener('error', onError);
       player.removeEventListener('trackschanged', refreshTracks);
       player.removeEventListener('adaptation', refreshTracks);
@@ -155,44 +304,128 @@ export function useShakaPlayer(
   }, [videoRef]);
 
   // ---- load --------------------------------------------------------------
-  const load = useCallback(async (manifest: MockManifest) => {
-    const player = playerRef.current;
-    if (!player) return;
+  const load = useCallback(
+    async (manifest: MockManifest, opts: LoadOptions = {}) => {
+      const player = playerRef.current;
+      if (!player) return;
 
-    setStatus('loading');
-    setError(null);
-    setTracks([]);
-
-    // Cấu hình DRM (mock — sprint sau gắn license-server thật)
-    if (manifest.drm?.keySystem && manifest.drm.licenseServer) {
-      player.configure({
-        drm: {
-          servers: {
-            [manifest.drm.keySystem]: manifest.drm.licenseServer,
-          },
-        },
+      setStatus('loading');
+      setError(null);
+      setTracks([]);
+      setDrmInfo({
+        ...EMPTY_DRM_INFO,
+        keyIds: manifest.keyId ? [manifest.keyId] : [],
       });
-    } else {
-      player.configure({ drm: { servers: {} } });
-    }
 
-    // ABR mặc định bật — tuỳ chọn disable qua selectTrack()
-    player.configure({ abr: { enabled: true } });
-    setAbrEnabled(true);
+      // ---- DRM config -----------------------------------------------------
+      // - servers[keySystem]: license endpoint chính.
+      // - advanced[keySystem]: ép Widevine L3 (SW_SECURE_CRYPTO) cho demo
+      //   Chrome desktop. Khi máy có TEE, có thể nâng lên HW_SECURE_*.
+      // - preferredKeySystems: ưu tiên Widevine trên Chrome/Edge, FairPlay
+      //   sẽ được handle ở task riêng (E8).
+      const targetLicenseServer = opts.overrideToInternalLicense
+        ? INTERNAL_LICENSE_URL
+        : manifest.drm?.licenseServer ?? '';
+      const keySystem = manifest.drm?.keySystem ?? '';
 
-    try {
-      await player.load(manifest.uri);
-      setStatus('ready');
-    } catch (err) {
-      const e = err as ShakaError;
-      setError(
-        `Load fail [${e.category ?? '?'}/${e.code ?? '?'}]: ${
+      if (keySystem && targetLicenseServer) {
+        player.configure({
+          drm: {
+            servers: { [keySystem]: targetLicenseServer },
+            advanced: {
+              'com.widevine.alpha': {
+                // Widevine L3 = phần mềm. Ép giá trị này để CDM không leo
+                // lên L1 trên thiết bị có TEE (giữ kết quả demo nhất quán
+                // và tương thích với cwip-shaka-proxy test KIDs).
+                videoRobustness: 'SW_SECURE_CRYPTO',
+                audioRobustness: 'SW_SECURE_CRYPTO',
+                persistentStateRequired: false,
+                distinctiveIdentifierRequired: false,
+                sessionType: 'temporary',
+              },
+              'com.microsoft.playready': {
+                videoRobustness: 'SW_SECURE_DECODE',
+                audioRobustness: 'SW_SECURE_DECODE',
+              },
+            },
+            preferredKeySystems: [
+              'com.widevine.alpha',
+              'com.microsoft.playready',
+            ],
+            // Bắt buộc license server response không được cache (defense
+            // in depth — Nginx đã set no-store, đây là layer thứ 2).
+            retryParameters: {
+              maxAttempts: 3,
+              baseDelay: 500,
+              backoffFactor: 2,
+              fuzzFactor: 0.3,
+              timeout: 10_000,
+            },
+          },
+        });
+      } else {
+        player.configure({ drm: { servers: {}, advanced: {} } });
+      }
+
+      player.configure({ abr: { enabled: true } });
+      setAbrEnabled(true);
+
+      try {
+        await player.load(manifest.uri);
+        setStatus('ready');
+
+        // Sau khi load xong: đọc drmInfo() do Shaka tự suy luận từ
+        // ContentProtection trong manifest + CDM đã chọn.
+        const info = player.drmInfo?.();
+        if (info) {
+          setDrmInfo((prev) => ({
+            ...prev,
+            keySystem: info.keySystem ?? keySystem ?? null,
+            licenseServer:
+              info.licenseServerUri ?? targetLicenseServer ?? null,
+            videoRobustness: info.videoRobustness ?? null,
+            audioRobustness: info.audioRobustness ?? null,
+            keyIds:
+              Array.isArray(info.keyIds) && info.keyIds.length > 0
+                ? info.keyIds
+                : prev.keyIds,
+          }));
+        } else if (keySystem) {
+          setDrmInfo((prev) => ({
+            ...prev,
+            keySystem,
+            licenseServer: targetLicenseServer || null,
+          }));
+        }
+      } catch (err) {
+        const e = err as ShakaError;
+        const msg = `Load fail [${e.category ?? '?'}/${e.code ?? '?'}]: ${
           e.data ? e.data.join(' ') : e.message ?? 'unknown error'
-        }`,
-      );
-      setStatus('error');
-    }
-  }, []);
+        }`;
+        setError(msg);
+        setStatus('error');
+
+        // Ghi nhận license error (nếu Shaka phân loại là DRM category=6).
+        if (e.category === 6) {
+          const stat: DrmRequestStat = {
+            ts: Date.now(),
+            uri: targetLicenseServer || '<unknown>',
+            status: 'error',
+            timeMs: 0,
+            requestBytes: 0,
+            responseBytes: 0,
+            errorMessage: msg,
+          };
+          setDrmInfo((prev) => ({
+            ...prev,
+            lastLicense: stat,
+            history: [stat, ...prev.history].slice(0, 8),
+          }));
+        }
+      }
+    },
+    [],
+  );
 
   const unload = useCallback(async () => {
     const player = playerRef.current;
@@ -200,6 +433,7 @@ export function useShakaPlayer(
     await player.unload();
     setStatus('idle');
     setTracks([]);
+    setDrmInfo(EMPTY_DRM_INFO);
   }, []);
 
   const selectTrack = useCallback((trackId: number) => {
@@ -225,6 +459,7 @@ export function useShakaPlayer(
     status,
     error,
     tracks,
+    drmInfo,
     load,
     unload,
     selectTrack,
