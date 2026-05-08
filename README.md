@@ -143,6 +143,75 @@ Bởi vì Mật mã học bị giới hạn trước Camera quay lén (Analog Ho
 - **Khảo sát:** Rủi ro false-positive hoặc mất watermark khi hacker cố tình Re-encode (nén chất lượng thấp) hoặc Crop hình.
 - **Kết luận thiết kế:** Watermarking đánh đổi chất lượng/hiệu năng lấy tính truy vết. Trong đồ án này, Watermarking là yếu tố phụ, không thay thế cho AES-CTR hay DRM.
 
+### 7.1. E7 — Hạn chế thực tế & mô hình tấn công Watermarking
+
+Watermarking trong đồ án là PoC kiểu “nhúng vào DCT tần số trung bình”. Vì vậy nó **không có bảo đảm tuyệt đối**. Dưới đây là các hạn chế quan trọng cần nêu rõ trong báo cáo:
+
+#### A) Re-encode / Transcoding (nén lại)
+- **Hiện tượng**: H.264/H.265 (hoặc upload qua mạng xã hội) sẽ thay đổi mạnh hệ số DCT/quantization, làm bit watermark bị lật.
+- **Hệ quả**: cần chiến lược **redundancy + vote qua nhiều block / nhiều frame**; nhưng nếu nén quá mạnh (CRF cao, bitrate thấp) watermark có thể về gần ngẫu nhiên.
+- **Thông điệp report**: watermark chịu được re-encode “mức vừa”, nhưng **không bền** trước re-encode cực mạnh.
+
+#### B) Crop / Rotate / Geometric transform (biến đổi hình học)
+- **Hiện tượng**: detector DCT theo lưới block 8×8 giả định “grid” không đổi. Crop/rotate/keystone sẽ làm **lệch pha grid**.
+- **Hệ quả**: bit recall giảm mạnh, detector có thể fail dù watermark vẫn “còn đâu đó” trong ảnh.
+- **Cách cải thiện (ngoài scope PoC)**:
+  - thêm **anchor/sync pattern** (các block đặc biệt để tự căn chỉnh);
+  - hoặc làm **grid-search** offset/scale/rotation;
+  - hoặc dùng feature-based alignment (SIFT/ORB) rồi mới đọc watermark.
+
+#### C) Collusion attacks (tấn công “trộn nhiều bản”)
+- **Mô hình**: attacker có nhiều bản video giống nhau nhưng watermark khác nhau (user A, B, C…).
+- **Kỹ thuật**: trung bình hoá pixel/frame, median, hoặc chọn min/max theo thời gian để triệt dấu watermark.
+- **Hệ quả**: watermark “simple per-user” có thể bị suy yếu nghiêm trọng → **truy vết sai / không truy vết được**.
+- **Cách cải thiện (ngoài scope PoC)**:
+  - dùng **collusion-resistant code** (ví dụ Tardos code);
+  - nhúng rải theo thời gian + per-segment pattern, tăng chi phí collusion.
+
+#### D) Analog re-capture / Screen recording (quay lén / capture lại)
+- **Mô hình**: attacker phát trên màn hình rồi quay bằng camera (hoặc capture HDMI).
+- **Tác động**:
+  - mất đồng bộ block (moiré, rolling shutter, motion blur);
+  - thêm noise, auto exposure/white balance;
+  - lại bị re-encode lần nữa (YouTube/TikTok).
+- **Hệ quả**: watermark DCT đơn giản có thể giảm mạnh detectability.
+- **Thông điệp report**: watermark giúp **truy vết best-effort**, không thể chống analog hole 100%.
+
+#### E) False positives / Thresholding
+- **Nguyên nhân**: nếu ngưỡng phát hiện quá thấp, nội dung “không watermark” vẫn có thể tình cờ khớp một phần payload.
+- **Giảm rủi ro**:
+  - payload dài (ví dụ 256 bit) + vote đa frame;
+  - đặt ngưỡng bit-recall đủ cao + thử nhiều user giả để ước tính FP rate.
+
+#### F) Trade-off chất lượng ↔ robustness
+- **Δ (strength) càng lớn**: bền hơn với re-encode/blur nhưng nguy cơ artefact tăng.
+- **Redundancy càng lớn**: bền hơn nhưng tốn CPU và “đụng” nhiều block hơn.
+- **Kết luận**: watermark luôn là **bài toán cân bằng** theo threat model.
+
+### 7.2. Gợi ý làm slide (5–7 slide, demo-friendly)
+
+- **Slide 1 — Vì sao cần watermark? (Analog Hole)**  
+  - 1 hình minh hoạ: camera quay màn hình / HDMI capture.  
+  - 1 câu chốt: “DRM chặn download, nhưng không chặn quay lén → cần truy vết”.
+
+- **Slide 2 — Ý tưởng nhúng (DCT mid-frequency)**  
+  - 1 sơ đồ pipeline: UserID → HMAC → bits → nhúng vào DCT blocks.  
+  - Nêu 2 tham số: Δ (strength), redundancy.
+
+- **Slide 3 — Detect (vote theo block + theo frame)**  
+  - 1 hình: vote per-block, sau đó majority vote across frames.  
+  - Chốt: “re-encode làm lật bit lẻ tẻ, vote giúp recover”.
+
+- **Slide 4 — Robustness summary (bảng kết quả)**  
+  - Chèn bảng ngắn: original / re-encode / blur / crop / rotate.  
+  - Nêu rõ: crop/rotate fail do geometric misalignment (thành thật, đúng khoa học).
+
+- **Slide 5 — Hạn chế quan trọng (E7)**  
+  - 4 bullet: collusion, analog recapture, geometric transforms, false positive thresholding.
+
+- **Slide 6 (tuỳ chọn) — “Next steps” nếu làm production**  
+  - sync/anchor, collusion-resistant codes, alignment, spread-spectrum.
+
 ---
 
 ## 8. Kế hoạch Thực nghiệm & Metrics
