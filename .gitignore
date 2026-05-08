@@ -249,3 +249,13 @@ cdn-sim/certs/pin.sha256.txt
 mongo-data/
 *.log
 nginx/logs/
+
+# Watermark — output ảnh/video lớn + sidecar; track code & .gitkeep, không
+# track artefact tái sinh được.
+watermark/test-assets/*.png
+watermark/test-assets/*.jpg
+watermark/test-assets/*.jpeg
+watermark/test-assets/*.mp4
+watermark/test-assets/*.mov
+watermark/test-assets/*.wm.json
+!watermark/test-assets/.gitkeep
