@@ -258,4 +258,7 @@ watermark/test-assets/*.jpeg
 watermark/test-assets/*.mp4
 watermark/test-assets/*.mov
 watermark/test-assets/*.wm.json
+watermark/test-assets/**/*.mp4
+watermark/test-assets/**/*.mov
+watermark/test-assets/**/*.csv
 !watermark/test-assets/.gitkeep
