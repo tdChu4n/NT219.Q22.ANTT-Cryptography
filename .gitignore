@@ -205,3 +205,43 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# =============================================================================
+# Project-specific (NT219 Multimedia DRM)
+# =============================================================================
+
+# DASH/HLS segments — output từ packager / ingest, lớn + regeneratable
+# Chỉ track manifest (.mpd, .m3u8); KHÔNG track segment binary.
+*.m4s
+*.ts
+
+# Riêng các segment ở root (orphan từ lần chạy packager nhầm working dir)
+/chunk-stream*.m4s
+/init-stream*.m4s
+
+# Node.js / Vite player
+node_modules/
+player/dist/
+player/.parcel-cache/
+player/tsconfig.tsbuildinfo
+*.tsbuildinfo
+.cache/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Cert + key — KHÔNG bao giờ commit private key
+*.pem
+*.key
+*.crt
+!cdn-sim/certs/.gitkeep
+
+# Docker volumes / runtime
+mongo-data/
+*.log
+nginx/logs/

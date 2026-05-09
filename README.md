@@ -566,7 +566,32 @@ ffplay full_movie.mp4
 
 ## 📅 Timeline
 
-https://docs.google.com/spreadsheets/d/1xy16zcxfLQ3jjUdWAUrzMyoJbKQ3jQkPNidLN4lXorg/edit?gid=0#gid=0
+Bảng theo dõi tiến độ: [Google Sheet — Timeline dự án](https://docs.google.com/spreadsheets/d/1w1mKGpv5SPb5p1dqNdZideCGQb87z6QokOSiyGN1Ckk/edit#gid=0)
+
+Các hạng mục dưới đây phải phản ánh trên sheet (cột tên/ nội dung / mốc có thể chỉnh theo lịch nhóm, nhưng **thứ tự nghiệp vụ và mã task** cần khớp cấu trúc đồ án trong README: pipeline mã hóa → License → CDN → Player → thực nghiệm E1–E8).
+
+| Giai đoạn | Mã | Nội dung công việc | Sản phẩm / mốc | Tham chiếu README |
+|---|---|---|---|---|
+| 0 | P0 | Khảo sát tài liệu CENC/DASH/DRM; cố định phạm vi, sơ đồ luồng mật mã (S1–S10) | Sơ đồ kiến trúc, danh sách công nghệ | § Thiết kế giải pháp, § Kiến trúc mật mã, § Chi tiết cơ chế |
+| 1 | T1.1 | Transcode ABR, tách segment fMP4/CMAF | `ingest/` → các rendition + segment | § Segment-based, § Cài đặt (Bước 1) |
+| 1 | T1.2 | Sinh KID / Content Key / IV (CSPRNG), lưu `license_keys.json`, đồng bộ với License | `media-processing/generate_cenc_keys.py` | § S3–S4, bảng bước S3–S4 |
+| 1 | T1.3 | Đóng gói CENC AES-128-CTR, PSSH, manifest DASH (shaka-packager) | Segment `.m4s` mã hóa + `.mpd` | § Pipeline bước 2, § S1–S2 |
+| 1 | T1.4 | License Server: JWT, entitlement, trả key mã hóa (RSA-OAEP), TLS | `license-server/` | § Quản lý quyền, § S6–S7, § Sải đặt License Server |
+| 1 | T1.5 | Kiểm tra header mã hóa (tenc / `mp4dump`), xác minh KID/IV trên segment | Báo cáo rút gọn + log kiểm tra | § Cài đặt (Bước 3), mock manifest tham chiếu T1.5 |
+| 1 | T1.6 | Mô phỏng CDN: phục vụ segment, Range request, tắt gzip `.m4s`, TLS (dev) | `cdn-sim/` | § Công nghệ, hardening streaming |
+| 1 | T1.7 | Web player: Shaka + EME, load manifest thật/mock | `player/` | § Công nghệ (Shaka), § Cài đặt |
+| 2 | E1 | Thực nghiệm: tải toàn bộ segment — chứng minh không phát/ghép được (ciphertext) | Ghi chép lệnh + kết quả | Bảng Thực nghiệm (E1) |
+| 2 | E2 | PoC IV Reuse: XOR ciphertext khi lặp IV — chứng minh IV phải unique | Script Python, ảnh chụp kết quả | E2, § IV/Nonce |
+| 2 | E3 | PoC trích xuất key trên Widevine L3 (Frida) | Log/minh họa rủi ro L3 | E3, § Kịch bản tấn công |
+| 2 | E4 | Thử tương tự trên môi trường TEE/L1 (chứng minh không lấy được key) | Ghi chép môi trường + kết luận | E4 |
+| 2 | E5 | Thử License replay / nonce một lần | Kết quả từ chối hợp lệ từ server | E5 |
+| 2 | E6 | Đo throughput AES-128-CTR (MB/s) | Bảng số liệu | E6, § Hiệu năng |
+| 2 | E7 | Watermark DCT: nhúng / trích, thử nén-crop (độ bền + hạn chế) | Số liệu recall/precision nếu có | E7, § Watermarking |
+| 2 | E8 | (Tùy chọn nâng cao) FairPlay / `cbcs`, handshake SPC–CKC | Tài liệu hoặc PoC tối thiểu | E8, § cbcs / FairPlay |
+| 3 | F | Tích hợp E2E: `docker compose`, demo một luồng xem hợp lệ | Video hoặc checklist demo | `infra/`, toàn bộ pipeline |
+| 3 | R | Báo cáo, slide, tổng hợp kết quả thực nghiệm & metrics | Bản nộp đồ án | § Metrics, § Thực nghiệm |
+
+Ghi chú: mã **T1.5–T1.7** trùng với gọi tên trong mã nguồn (`player` / `cdn-sim` / packager). **Task 3** trong script ingest tương ứng **T1.1** (transcode/ABR).
 
 ---
 
