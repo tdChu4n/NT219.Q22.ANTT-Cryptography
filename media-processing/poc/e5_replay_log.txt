@@ -1,0 +1,21 @@
+======================================================
+🔴 PoC E5: TẤN CÔNG LICENSE REPLAY (NONCE 1 LẦN) 🔴
+======================================================
+
+[1] Lộc (Người dùng Premium) tạo yêu cầu xin Key hợp lệ...
+ -> Gửi Request 1 (Hợp lệ):
+[KMS Server] Nhận yêu cầu cấp Key từ 'loc_premium' - Nonce: 7992cc19
+[KMS Server] ✅ HỢP LỆ: Nonce mới. Chấp nhận cấp License Key!
+ -> Kết quả trả về: {'status': 200, 'license_key': 'AES_KEY_9989adb99119c956'}
+
+[2] HACKER đánh cắp gói tin Request 1 và thực hiện REPLAY ATTACK...
+ -> Hacker gửi lại Request 2 (Copy y hệt Request 1):
+[KMS Server] Nhận yêu cầu cấp Key từ 'loc_premium' - Nonce: 7992cc19
+[KMS Server] ❌ TỪ CHỐI: Phát hiện Nonce đã hết hạn hoặc bị sử dụng lại (Replay)!
+
+======================================================
+🟢 KẾT QUẢ TỪ LOG CỦA MÁY CHỦ (KMS):
+Status Code: 401
+Message: 401 Unauthorized - Nonce Expired
+======================================================
+✅ KẾT LUẬN: Đã chặn thành công Replay Attack nhờ cơ chế Nonce 1 lần!
