@@ -1,0 +1,7 @@
+#EXTM3U
+#EXT-X-TARGETDURATION:4
+#EXT-X-VERSION:6
+#EXT-X-KEY:METHOD=SAMPLE-AES,URI="skd://kms.mock.local/fairplay",KEYFORMAT="com.apple.streamingkeydelivery",KEYFORMATVERSIONS="1"
+#EXTINF:4.000,
+segment_0.ts
+#EXT-X-ENDLIST
