@@ -1,0 +1,378 @@
+openapi: "3.1.0"
+
+info:
+  title: NT219 DRM License Server API
+  version: "1.0.0"
+  description: |
+    License Server cấp DRM license cho video streaming được mã hóa bằng CENC (AES-128-CTR).
+
+    **Pipeline:**
+    1. Client đăng nhập → nhận JWT RS256
+    2. Client gửi license request kèm JWT + KID + Device Public Key + Nonce
+    3. Server verify JWT → check entitlement → wrap Content Key bằng RSA-OAEP
+    4. Server trả Time-bound License (TTL 2h) với Content Key đã mã hóa
+    5. Admin có thể rotate Master Key qua `/kms/rotate`
+
+    **Bảo mật:**
+    - JWT RS256 cho tất cả authenticated endpoints
+    - Nonce 1 lần để chống Replay Attack
+    - Content Key được mã hóa RSA-OAEP với Device Public Key
+    - Time-bound license (exp field)
+    - Session control: tối đa 2 thiết bị đồng thời
+
+servers:
+  - url: http://localhost:3000
+    description: Local development (PoC mode)
+  - url: https://license.nt219-drm.internal
+    description: Production (via Nginx reverse proxy)
+
+tags:
+  - name: Auth
+    description: Xác thực và cấp JWT
+  - name: License
+    description: Cấp DRM license cho video content
+  - name: KMS
+    description: Key Management Service — rotate và monitor Master Key
+
+# ---------------------------------------------------------------
+# PATHS
+# ---------------------------------------------------------------
+paths:
+
+  /:
+    get:
+      tags: [Auth]
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Server đang chạy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: "🔐 License Server NT219 đang chạy."
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Đăng nhập — cấp JWT RS256
+      operationId: login
+      description: |
+        Mô phỏng đăng nhập. Trả về JWT RS256 (2h TTL) chứa userId, role, entitlements.
+        Token này dùng làm Bearer token cho POST /api/license.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              username: "alice"
+      responses:
+        "200":
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Thiếu username
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Missing username"
+
+  /api/license:
+    post:
+      tags: [License]
+      summary: Cấp DRM license
+      operationId: issueLicense
+      description: |
+        Endpoint chính cấp DRM license. Luồng xử lý:
+        1. Verify JWT RS256
+        2. Validate nonce (chống Replay Attack)
+        3. Check entitlement (MongoDB hoặc JWT payload ở PoC mode)
+        4. Check session control (max 2 devices/user)
+        5. Lấy Content Key từ KMS và giải mã bằng Master Key
+        6. Mã hóa Content Key bằng RSA-OAEP với Device Public Key
+        7. Trả Time-bound License
+
+        **Lưu ý nonce:** Mỗi request phải dùng UUID mới. Nonce đã dùng sẽ bị từ chối (409).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LicenseRequest"
+            example:
+              kid: "19d57c645156a5a0ddd23849e6377665"
+              device_id: "device_chrome_abc123"
+              device_public_key_pem: "-----BEGIN PUBLIC KEY-----\nMIIBIjAN..."
+              nonce: "550e8400-e29b-41d4-a716-446655440000"
+              content_id: "movie_123"
+      responses:
+        "200":
+          description: License cấp thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LicenseResponse"
+        "400":
+          description: Request body thiếu field hoặc RSA key không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing_field:
+                  value:
+                    error: "Bad Request: Thiếu kid, device_id, device_public_key_pem, nonce hoặc content_id"
+                invalid_rsa:
+                  value:
+                    error: "RSA Error: Public Key Device không hợp lệ — error:0900006e:PEM routines"
+        "401":
+          description: JWT không hợp lệ hoặc hết hạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Unauthorized: jwt expired"
+        "403":
+          description: Không có quyền xem content hoặc vượt giới hạn thiết bị
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                no_entitlement:
+                  value:
+                    error: "Forbidden: User \"alice\" chưa mua quyền xem \"movie_123\""
+                max_devices:
+                  value:
+                    error: "Forbidden: Đã đạt giới hạn 2 thiết bị xem đồng thời. Vui lòng đăng xuất ở thiết bị khác."
+                expired_entitlement:
+                  value:
+                    error: "Forbidden: Quyền xem nội dung đã hết hạn"
+        "404":
+          description: Không tìm thấy Content Key cho KID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Not Found: Không tìm thấy key cho KID \"19d57c...\""
+        "409":
+          description: Nonce đã được dùng — Replay Attack bị chặn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Conflict: Replay attack: Nonce đã được sử dụng trước đó!"
+        "500":
+          description: Lỗi DB hoặc KMS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /kms/status:
+    get:
+      tags: [KMS]
+      summary: Kiểm tra trạng thái KMS
+      operationId: kmsStatus
+      responses:
+        "200":
+          description: KMS đang hoạt động
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  master_key_set:
+                    type: boolean
+                    example: true
+                  key_length_bits:
+                    type: integer
+                    example: 256
+
+  /kms/rotate:
+    post:
+      tags: [KMS]
+      summary: Rotate Master Key (admin only)
+      operationId: rotateMasterKey
+      description: |
+        Sinh Master Key mới (AES-256), giải mã tất cả Content Key bằng Old Key,
+        mã hóa lại bằng New Key, ghi audit log.
+
+        **Chỉ dành cho admin** — JWT phải có `role: "admin"`.
+
+        Trong production: new_master_key_hex KHÔNG được trả về, nên lưu vào HSM.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Rotation hoàn thành
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotationResponse"
+        "401":
+          description: Thiếu hoặc JWT không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Không phải admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Forbidden: Chỉ admin mới được rotate Master Key"
+
+# ---------------------------------------------------------------
+# COMPONENTS
+# ---------------------------------------------------------------
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 — lấy từ POST /api/auth/login
+
+  schemas:
+
+    LoginRequest:
+      type: object
+      required: [username]
+      properties:
+        username:
+          type: string
+          description: Tên đăng nhập (mô phỏng — mọi username đều được chấp nhận ở PoC)
+          example: alice
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT RS256 (2h TTL)
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        message:
+          type: string
+          example: "Đăng nhập thành công"
+
+    LicenseRequest:
+      type: object
+      required: [kid, device_id, device_public_key_pem, nonce, content_id]
+      properties:
+        kid:
+          type: string
+          description: Key ID (hex, 32 chars = 16 bytes) — lấy từ DASH manifest ContentProtection
+          example: "19d57c645156a5a0ddd23849e6377665"
+          pattern: "^[0-9a-f]{32}$"
+        device_id:
+          type: string
+          description: Định danh thiết bị (unique per device instance)
+          example: "device_chrome_abc123"
+        device_public_key_pem:
+          type: string
+          description: RSA-2048 Public Key PEM của thiết bị. Content Key sẽ được mã hóa bằng key này.
+          example: "-----BEGIN PUBLIC KEY-----\nMIIBIjAN..."
+        nonce:
+          type: string
+          format: uuid
+          description: UUID v4 ngẫu nhiên, dùng 1 lần duy nhất. Dùng lại → 409 Conflict.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        content_id:
+          type: string
+          description: ID của nội dung video (phải khớp với entitlement trong DB/JWT)
+          example: "movie_123"
+
+    LicenseResponse:
+      type: object
+      properties:
+        kid:
+          type: string
+          description: Key ID (hex)
+          example: "19d57c645156a5a0ddd23849e6377665"
+        encrypted_key:
+          type: string
+          format: byte
+          description: |
+            Content Key đã được mã hóa RSA-OAEP (SHA-256) bằng device_public_key_pem.
+            Client dùng Device Private Key để giải mã và lấy Content Key dạng hex (16 bytes).
+          example: "base64encodedRSAOAEPciphertext..."
+        issued_at:
+          type: integer
+          format: int64
+          description: Unix timestamp (giây) khi license được cấp
+          example: 1716000000
+        expires_at:
+          type: integer
+          format: int64
+          description: Unix timestamp (giây) khi license hết hạn (issued_at + 7200)
+          example: 1716007200
+        license_nonce:
+          type: string
+          format: uuid
+          description: Nonce của license (để tham chiếu audit log)
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+    RotationResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Master Key Rotation hoàn thành"
+        rotation_id:
+          type: string
+          format: uuid
+          example: "b3e4f5a6-c7d8-9012-bcde-f01234567890"
+        rotated_at:
+          type: string
+          format: date-time
+          example: "2026-05-21T10:30:00.000Z"
+        keys_processed:
+          type: integer
+          example: 4
+        keys_failed:
+          type: integer
+          example: 0
+        new_master_key_hex:
+          type: string
+          description: "(PoC only — không trả về trong production)"
+          example: "a1b2c3d4..."
+        poc_mode:
+          type: boolean
+          description: true nếu chạy ở PoC mode (không có MongoDB)
+        test_passed:
+          type: boolean
+          description: Kết quả self-test re-encryption (PoC mode)
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Mô tả lỗi
+          example: "Unauthorized: jwt expired"
