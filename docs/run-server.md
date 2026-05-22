@@ -1,4 +1,4 @@
-# Hướng dẫn chạy server không dùng Docker
+# Hướng dẫn chạy server
 
 Tài liệu này dành cho thành viên trong nhóm khi cần chạy nhanh server để demo,
 test API hoặc triển khai lên máy ảo Ubuntu.
