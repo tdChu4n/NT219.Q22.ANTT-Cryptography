@@ -1,60 +1,92 @@
+import threading
+import urllib.request
+import urllib.error
+import json
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
 import hashlib
 
-# Mảng lưu trữ nội dung log để xuất ra file
-log_content = []
-
+# Mảng để lưu log nộp sếp
+log_output = []
 def log(msg):
     print(msg)
-    log_content.append(msg)
+    log_output.append(msg)
 
-log("======================================================")
-log("🔴 PoC E5: TẤN CÔNG LICENSE REPLAY (NONCE 1 LẦN) 🔴")
-log("======================================================\n")
-
-# Giả lập Database lưu trữ các Nonce đã sử dụng của KMS (Key Management System)
+# =========================================================
+# 1. MOCK KMS SERVER (Chạy mô phỏng máy chủ cấp Key)
+# =========================================================
 used_nonces = set()
+class MockKMSHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass # Tắt log mặc định của Python HTTP Server cho dễ nhìn
 
-def kms_license_server(request_data):
-    """Giả lập máy chủ cấp phép bản quyền (License Server)"""
-    user = request_data.get('user')
-    nonce = request_data.get('nonce')
-    
-    log(f"[KMS Server] Nhận yêu cầu cấp Key từ '{user}' - Nonce: {nonce}")
-    
-    # Kiểm tra Nonce (Cơ chế chống Replay Attack)
-    if nonce in used_nonces:
-        log("[KMS Server] ❌ TỪ CHỐI: Phát hiện Nonce đã hết hạn hoặc bị sử dụng lại (Replay)!")
-        return {"status": 401, "error": "401 Unauthorized - Nonce Expired"}
-    
-    # Nếu Nonce mới -> Lưu vào blacklist và cấp Key
-    used_nonces.add(nonce)
-    log("[KMS Server] ✅ HỢP LỆ: Nonce mới. Chấp nhận cấp License Key!")
-    return {"status": 200, "license_key": "AES_KEY_9989adb99119c956"}
+    def do_POST(self):
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+        payload = json.loads(post_data)
+        nonce = payload.get("nonce")
 
-# ---------------------------------------------------------
-# KỊCH BẢN TẤN CÔNG
-# ---------------------------------------------------------
-log("[1] Lộc (Người dùng Premium) tạo yêu cầu xin Key hợp lệ...")
-valid_nonce = hashlib.md5(os.urandom(16)).hexdigest()[:8]
-valid_request = {"user": "loc_premium", "nonce": valid_nonce}
+        # Cơ chế chống Replay Attack
+        if nonce in used_nonces:
+            self.send_response(401)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"error": "401 Unauthorized - Nonce Expired. Replay Attack Detected!"}')
+        else:
+            used_nonces.add(nonce)
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"status": 200, "license_key": "AES_KEY_9989adb99119c956"}')
 
-log(" -> Gửi Request 1 (Hợp lệ):")
-resp1 = kms_license_server(valid_request)
-log(f" -> Kết quả trả về: {resp1}\n")
+def start_server():
+    server = HTTPServer(('127.0.0.1', 8085), MockKMSHandler)
+    server.serve_forever()
 
-log("[2] HACKER đánh cắp gói tin Request 1 và thực hiện REPLAY ATTACK...")
-log(" -> Hacker gửi lại Request 2 (Copy y hệt Request 1):")
-resp2 = kms_license_server(valid_request)
+# Khởi chạy KMS Server ở chế độ nền
+server_thread = threading.Thread(target=start_server, daemon=True)
+server_thread.start()
+time.sleep(1) # Đợi 1 giây để server sẵn sàng nhận request
 
-log("\n======================================================")
-log("🟢 KẾT QUẢ TỪ LOG CỦA MÁY CHỦ (KMS):")
-log(f"Status Code: {resp2['status']}")
-log(f"Message: {resp2.get('error')}")
-log("======================================================")
-log("✅ KẾT LUẬN: Đã chặn thành công Replay Attack nhờ cơ chế Nonce 1 lần!")
+# =========================================================
+# 2. KỊCH BẢN TẤN CÔNG BẰNG HTTP REQUEST THẬT
+# =========================================================
+log("==================================================")
+log("🔴 PoC E5: TẤN CÔNG LICENSE REPLAY (HTTP NETWORK) 🔴")
+log("==================================================\n")
 
-# Tự động xuất log ra file để nộp Deliverable
+url = "http://127.0.0.1:8085"
+nonce = hashlib.md5(os.urandom(16)).hexdigest()[:8]
+payload_dict = {"user": "loc_premium", "nonce": nonce}
+payload_bytes = json.dumps(payload_dict).encode('utf-8')
+headers = {'Content-Type': 'application/json'}
+
+log("[1] BƯỚC CAPTURE: Người dùng gửi Request lần 1 (Nonce mới)")
+log(f" -> Gửi Payload: {payload_dict}")
+req1 = urllib.request.Request(url, data=payload_bytes, headers=headers, method='POST')
+try:
+    with urllib.request.urlopen(req1) as response:
+        log(f" <- SERVER KMS TRẢ VỀ [HTTP {response.status}]: {response.read().decode('utf-8')}\n")
+except urllib.error.HTTPError as e:
+    log(f" <- SERVER KMS TRẢ VỀ [HTTP {e.code}]: {e.read().decode('utf-8')}\n")
+
+
+log("[2] BƯỚC REPLAY: Hacker bắt được gói tin và gửi lại y hệt (Cùng Nonce)")
+log(f" -> Gửi Payload: {payload_dict}")
+req2 = urllib.request.Request(url, data=payload_bytes, headers=headers, method='POST')
+try:
+    with urllib.request.urlopen(req2) as response:
+        log(f" <- SERVER KMS TRẢ VỀ [HTTP {response.status}]: {response.read().decode('utf-8')}\n")
+except urllib.error.HTTPError as e:
+    # Gói tin Replay sẽ bị văng vào nhánh lỗi này do HTTP 401
+    log(f" <- SERVER KMS TRẢ VỀ [HTTP {e.code}]: {e.read().decode('utf-8')}\n")
+
+log("==================================================")
+log("✅ KẾT LUẬN: Request 1 thành công (HTTP 200). Request 2 bị chặn (HTTP 401) vì Server phát hiện Replay Attack!")
+log("==================================================")
+
+# Ghi đè log vào file cũ
 with open("poc/e5_replay_log.txt", "w", encoding="utf-8") as f:
-    f.write("\n".join(log_content))
-log("\n[!] Đã tự động xuất file báo cáo: poc/e5_replay_log.txt")
+    f.write("\n".join(log_output))
+print("\n[!] Đã lưu file log chứng minh mới vào: poc/e5_replay_log.txt")
