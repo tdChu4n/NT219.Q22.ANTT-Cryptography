@@ -1,0 +1,27 @@
+[Unit]
+Description=NT219 DRM License Server
+Documentation=file:/opt/nt219/app/license-server/docs/license-server.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nt219-license
+Group=nt219-license
+WorkingDirectory=/opt/nt219/app/license-server
+EnvironmentFile=/etc/nt219/license-server.env
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+# Basic service hardening. Keep write access to generated demo JWT keys unless
+# you provision keys elsewhere.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/nt219/app/database
+
+[Install]
+WantedBy=multi-user.target

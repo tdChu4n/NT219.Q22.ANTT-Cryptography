@@ -16,7 +16,8 @@ services:
     depends_on:
       - db
     environment:
-      - MONGO_URL=mongodb://db:27017/multimedia
+      - MONGO_URI=mongodb://db:27017
+      - DB_NAME=drm_platform
 
   # 3. CDN/Web Server của Ân (Phân phối nội dung) — Task T1.6 hardened
   cdn-sim:

@@ -36,13 +36,23 @@ KMS_MASTER_KEY=<32-byte-hex> \
 npm start
 ```
 
-### Docker
+### VM / systemd
 
 ```bash
-cd infra
-docker compose up --build
-# License Server tự động kết nối MongoDB trong compose network
+# Xem template đầy đủ tại infra/vm/
+cd /opt/nt219/app/license-server
+npm ci --omit=dev
+
+sudo cp ../infra/vm/license-server.env.example /etc/nt219/license-server.env
+sudo chmod 600 /etc/nt219/license-server.env
+sudo cp ../infra/vm/license-server.service /etc/systemd/system/license-server.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now license-server
 ```
+
+Docker Compose chỉ còn dùng như môi trường tham khảo cũ. Khi chạy VM, dùng
+`MONGO_URI` trỏ tới MongoDB private IP/localhost và quản lý service qua
+`systemd`.
 
 ---
 

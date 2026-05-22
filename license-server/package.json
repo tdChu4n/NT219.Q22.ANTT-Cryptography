@@ -8,8 +8,10 @@
     },
     "dependencies": {
         "cors": "^2.8.6",
+        "dotenv": "^17.4.2",
         "express": "^4.18.2",
         "jsonwebtoken": "^9.0.3",
+        "mongodb": "^7.2.0",
         "mongoose": "^7.0.0",
         "mp4box": "^2.3.0"
     },

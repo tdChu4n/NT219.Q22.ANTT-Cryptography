@@ -6,8 +6,18 @@
  * Yêu cầu: MONGO_URI trong biến môi trường hoặc .env
  */
 
-require('dotenv').config({ path: __dirname + '/../.env' });
-const { MongoClient } = require('mongodb');
+const path = require('path');
+
+function requireFromRepo(name) {
+    try {
+        return require(name);
+    } catch (err) {
+        return require(path.join(__dirname, '..', 'license-server', 'node_modules', name));
+    }
+}
+
+requireFromRepo('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const { MongoClient } = requireFromRepo('mongodb');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
 const DB_NAME   = process.env.DB_NAME   || 'drm_platform';

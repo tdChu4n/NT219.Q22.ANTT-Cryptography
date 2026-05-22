@@ -252,9 +252,11 @@ project-root/
   ├─ cdn-sim/            # Nginx mô phỏng CDN & Caching
   ├─ player/             # Shaka Player Web App
   ├─ watermark/          # Script nhúng & dò tìm Forensic Watermarking
-  ├─ infra/              # Docker Compose / cấu hình triển khai hệ thống
+  ├─ infra/              # VM deployment, smoke test, cấu hình Docker legacy
   └─ docs/               # Báo cáo, slide, kiến trúc, sơ đồ draw.io
 ```
+
+Hướng dẫn chạy server cho nhóm: [docs/run-server.md](docs/run-server.md).
 
 ---
 

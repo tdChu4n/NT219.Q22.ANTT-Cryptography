@@ -1,150 +1,156 @@
-#!/bin/bash
-# T3.1: Integration test E2E (smoke-test.sh)
-# Flow: Ingest -> Packager -> CDN -> Player (mô phỏng gọi api) -> License Server
+#!/usr/bin/env bash
+# T3.1: Integration smoke test for Docker-free VM deployment.
+# Override targets:
+#   LICENSE_BASE_URL=http://10.0.0.12:3000
+#   CDN_BASE_URL=https://cdn.example.local
+#   SEGMENT_PATH=/video/v_1.m4s
+#   ALLOW_INSECURE_TLS=1   # self-signed VM certs
 
-echo "🚀 Bắt đầu Integration Test E2E (Smoke Test)..."
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+export LICENSE_BASE_URL="${LICENSE_BASE_URL:-http://127.0.0.1:3000}"
+export CDN_BASE_URL="${CDN_BASE_URL:-http://127.0.0.1}"
+export SEGMENT_PATH="${SEGMENT_PATH:-/video/seg_001.m4s}"
+export TEST_KID="${TEST_KID:-19d57c645156a5a0ddd23849e6377665}"
+export CONTENT_ID="${CONTENT_ID:-movie_123}"
+export ALLOW_INSECURE_TLS="${ALLOW_INSECURE_TLS:-0}"
+
+echo "Bat dau Integration Smoke Test..."
+echo "License: ${LICENSE_BASE_URL}"
+echo "CDN:     ${CDN_BASE_URL}"
+echo "Segment: ${SEGMENT_PATH}"
 echo "------------------------------------------------------------"
 
-# Helper function
-check_status() {
-    if [ $1 -eq 0 ]; then
-        echo -e "[✅ PASS] $2"
-    else
-        echo -e "[❌ FAIL] $2"
-        exit 1
-    fi
-}
-
-# 1. Kiểm tra Packager Output (Ingest -> Packager)
-echo -e "\n[1] Kiểm tra Ingest / Packager..."
-if [ -f "../media-processing/license_keys.json" ]; then
-    check_status 0 "Tìm thấy file license_keys.json (đã export CENC keys)"
+if [ -f "${REPO_ROOT}/media-processing/license_keys.json" ]; then
+    echo "[PASS] Tim thay media-processing/license_keys.json"
 else
-    echo "[⚠️ WARN] Không tìm thấy license_keys.json, server sẽ dùng fallback."
+    echo "[WARN] Khong thay media-processing/license_keys.json; license API co the tra 404 neu DB chua import key."
 fi
 
-# 2. End-to-End Test bằng Node.js (xử lý Health Check, Auth, License, Decrypt)
-echo -e "\n[2] Kiểm tra luồng E2E (Health -> Auth -> License -> Decrypt)..."
-
-node.exe -e "
-const http = require('http');
+node <<'NODE'
 const crypto = require('crypto');
+const http = require('http');
+const https = require('https');
 
-async function fetchJson(url, options) {
-    return new Promise((resolve, reject) => {
-        const req = http.request(url, options, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                try {
-                    resolve({ status: res.statusCode, data: JSON.parse(data) });
-                } catch (e) {
-                    resolve({ status: res.statusCode, data });
-                }
-            });
-        });
-        req.on('error', reject);
-        if (options && options.body) req.write(options.body);
-        req.end();
+const licenseBase = process.env.LICENSE_BASE_URL.replace(/\/$/, '');
+const cdnBase = process.env.CDN_BASE_URL.replace(/\/$/, '');
+const segmentPath = process.env.SEGMENT_PATH || '/video/seg_001.m4s';
+const allowInsecureTls = process.env.ALLOW_INSECURE_TLS === '1';
+
+function request(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const client = parsed.protocol === 'https:' ? https : http;
+    const req = client.request(parsed, {
+      method: options.method || 'GET',
+      headers: options.headers || {},
+      rejectUnauthorized: !allowInsecureTls,
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        resolve({ status: res.statusCode, headers: res.headers, body });
+      });
     });
+    req.on('error', reject);
+    if (options.body) req.write(options.body);
+    req.end();
+  });
 }
 
-async function fetchString(url) {
-    return new Promise((resolve, reject) => {
-        const req = http.request(url, { method: 'GET' }, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => resolve({ status: res.statusCode, data }));
-        });
-        req.on('error', reject);
-        req.end();
-    });
+function parseJson(res) {
+  try {
+    return JSON.parse(res.body);
+  } catch {
+    return null;
+  }
 }
 
-async function runTest() {
-    try {
-        // 0. Health Check
-        console.log('   -> GET / (License Server Health Check)');
-        const healthRes = await fetchString('http://127.0.0.1:3000/');
-        if (healthRes.status !== 200) throw new Error('License Server không phản hồi!');
-        console.log('   [✅ PASS] License Server đang hoạt động');
+async function main() {
+  console.log('\n[1] Health checks');
+  const licenseHealth = await request(`${licenseBase}/`);
+  if (licenseHealth.status !== 200) {
+    throw new Error(`License health failed: HTTP ${licenseHealth.status}`);
+  }
+  console.log('  [PASS] License server health');
 
-        console.log('   -> GET /healthz (CDN Health Check)');
-        try {
-            const cdnRes = await fetchString('http://127.0.0.1:80/healthz');
-            if (cdnRes.status === 200) {
-                console.log('   [✅ PASS] CDN đang hoạt động (HTTP 200)');
-            } else {
-                console.log('   [⚠️ WARN] CDN trả về HTTP ' + cdnRes.status);
-            }
-        } catch(e) {
-            console.log('   [⚠️ WARN] CDN không phản hồi. Bỏ qua nếu chưa chạy docker-compose.');
-        }
+  const cdnHealth = await request(`${cdnBase}/healthz`);
+  if (cdnHealth.status !== 200) {
+    throw new Error(`CDN health failed: HTTP ${cdnHealth.status}`);
+  }
+  console.log('  [PASS] CDN health');
 
-        // A. Đăng nhập xin JWT
-        console.log('   -> POST /api/auth/login');
+  console.log('\n[2] Auth + license API');
+  const authRes = await request(`${licenseBase}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'e2e_tester' }),
+  });
+  const authJson = parseJson(authRes);
+  if (authRes.status !== 200 || !authJson?.token) {
+    throw new Error(`Auth failed: HTTP ${authRes.status} ${authRes.body}`);
+  }
+  console.log('  [PASS] JWT issued');
 
-        const authRes = await fetchJson('http://127.0.0.1:3000/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: 'e2e_tester' })
-        });
-        if (authRes.status !== 200 || !authRes.data.token) throw new Error('Auth fail');
-        console.log('   [✅ PASS] Lấy JWT Token thành công');
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
 
-        // B. Tạo Device RSA Key
-        const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
-            modulusLength: 2048,
-            publicKeyEncoding: { type: 'spki', format: 'pem' },
-            privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-        });
+  const licenseRes = await request(`${licenseBase}/api/license`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authJson.token}`,
+    },
+    body: JSON.stringify({
+      kid: process.env.TEST_KID,
+      device_id: `device-e2e-${Date.now()}`,
+      device_public_key_pem: publicKey,
+      nonce: crypto.randomUUID(),
+      content_id: process.env.CONTENT_ID,
+    }),
+  });
 
-        // C. Xin License
-        console.log('   -> POST /api/license');
-        const licenseRes = await fetchJson('http://127.0.0.1:3000/api/license', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + authRes.data.token
-            },
-            body: JSON.stringify({
-                kid: '19d57c645156a5a0ddd23849e6377665', // KID từ db hoặc file
-                device_id: 'device-e2e-' + Date.now(),
-                device_public_key_pem: publicKey,
-                nonce: crypto.randomUUID(),
-                content_id: 'movie_123'
-            })
-        });
+  const licenseJson = parseJson(licenseRes);
+  if (licenseRes.status === 200 && licenseJson?.encrypted_key) {
+    const contentKeyBuf = crypto.privateDecrypt({
+      key: privateKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: 'sha256',
+    }, Buffer.from(licenseJson.encrypted_key, 'base64'));
+    console.log(`  [PASS] License issued and decrypted (${contentKeyBuf.length} bytes)`);
+  } else if (licenseRes.status === 404 || licenseRes.status === 503) {
+    console.log(`  [WARN] License API reachable but key is not ready: HTTP ${licenseRes.status}`);
+  } else {
+    throw new Error(`License API failed: HTTP ${licenseRes.status} ${licenseRes.body}`);
+  }
 
-        if (licenseRes.status === 200) {
-            console.log('   [✅ PASS] Cấp License thành công (HTTP 200)');
-            
-            // D. Giải mã Content Key để chứng minh License xài được
-            const encryptedKey = licenseRes.data.encrypted_key;
-            const contentKeyBuf = crypto.privateDecrypt({
-                key: privateKey,
-                padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-                oaepHash: 'sha256'
-            }, Buffer.from(encryptedKey, 'base64'));
-            
-            console.log('   [✅ PASS] Device giải mã Content Key thành công: ' + contentKeyBuf.toString('hex').substring(0, 10) + '...');
-        } else if (licenseRes.status === 404 || licenseRes.status === 503) {
-            console.log('   [⚠️ WARN] Không tìm thấy KID trong DB (Cần chạy ingest trước). Status: ' + licenseRes.status);
-        } else {
-            throw new Error('License API fail: ' + JSON.stringify(licenseRes.data));
-        }
+  console.log('\n[3] CDN Range request');
+  const rangeRes = await request(`${cdnBase}${segmentPath}`, {
+    method: 'GET',
+    headers: { Range: 'bytes=0-1023' },
+  });
 
-    } catch (err) {
-        console.error('   [❌ FAIL]', err.message);
-        process.exit(1);
-    }
+  if (rangeRes.status === 206) {
+    console.log('  [PASS] CDN returns 206 Partial Content for video Range');
+  } else if (rangeRes.status === 404) {
+    console.log(`  [WARN] Segment not found at ${segmentPath}; publish media before final VM demo.`);
+  } else {
+    throw new Error(`Range request failed: HTTP ${rangeRes.status}`);
+  }
 }
-runTest();
-"
-if [ $? -ne 0 ]; then
-    exit 1
-fi
+
+main().catch((err) => {
+  console.error(`\n[FAIL] ${err.message}`);
+  process.exit(1);
+});
+NODE
 
 echo "------------------------------------------------------------"
-echo -e "\n🎉 TẤT CẢ E2E TESTS ĐỀU PASS XANH!"
-exit 0
+echo "Smoke test finished."
