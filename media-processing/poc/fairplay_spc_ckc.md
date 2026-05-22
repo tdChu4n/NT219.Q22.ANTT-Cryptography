@@ -1,19 +1,19 @@
-# Tài liệu: Giao thức Handshake SPC/CKC trong Apple FairPlay DRM
+# Tài liệu: Giao thức Handshake SPC/CKC tối thiểu (Apple FairPlay)
 
-Để Safari có thể phát được luồng HLS mã hóa bằng scheme `cbcs`, trình phát (Player) và máy chủ khóa (License Server) phải thực hiện một quá trình trao đổi an toàn (Handshake) thông qua hai thành phần chính: **SPC** và **CKC**.
+## 1. Scope (Phạm vi PoC)
+PoC này được thiết kế để minh họa luồng **Handshake SPC/CKC tối thiểu**. 
+Do việc sinh ra CKC (Content Key Context) thực tế đòi hỏi hệ thống phải được trang bị **Apple FPS certificate** và **KSM (Key Security Module) thật**, đồ án này **không cam kết** Safari có thể decrypt/play luồng video.
 
-## 1. SPC (Server Playback Context) - "Gói yêu cầu"
-Khi Player đọc file `.m3u8` và thấy thẻ `#EXT-X-KEY:METHOD=SAMPLE-AES` chứa `skd://`, nó sẽ nhờ hệ điều hành (Apple OS) tạo ra một gói SPC.
-* **Nội dung của SPC:** Chứa thông tin định danh của thiết bị, chứng chỉ (FairPlay Certificate) từ Apple, và thông tin xác thực để chứng minh thiết bị này an toàn (không bị jailbreak).
-* **Luồng đi:** Player gửi gói SPC này lên máy chủ License Server (KMS).
+> **Mục tiêu chốt lại của PoC:** Safari nhận diện được HLS Playlist có chứa cờ FairPlay-signaled và **phát thành công SPC request** lên hệ thống. Quá trình trả về CKC real nằm ngoài phạm vi thực hành.
 
-## 2. CKC (Content Key Context) - "Gói trả lời"
-Khi License Server nhận được SPC, nó sẽ kiểm tra quyền của người dùng (Token hợp lệ không). Nếu pass, Server sẽ "mở gói" SPC, lấy ra khóa AES (Content Key) và bọc nó lại thành một gói CKC.
-* **Nội dung của CKC:** Chứa Content Key đã được mã hóa theo cách mà **chỉ có phần cứng của thiết bị yêu cầu (TEE)** mới có thể giải mã được.
-* **Luồng đi:** License Server trả CKC về cho Player. Player đưa CKC vào phần cứng Apple để giải mã các block video `cbcs` và phát lên màn hình.
+## 2. Chi tiết luồng hoạt động (Minimal Path)
+1. **Packaging (Đóng gói):** Luồng video được đóng gói dưới dạng HLS CMAF với scheme `cbcs`. Trình đóng gói (Packager) được cấu hình để nhúng trực tiếp cờ FairPlay vào file playlist thông qua các tham số:
+   `--protection_scheme cbcs`, `--protection_systems FairPlay`, `--hls_key_uri skd://movie_123`
 
-## 3. Tóm tắt Handshake
-1. Safari yêu cầu phát luồng `cbcs`.
-2. HĐH tạo **SPC** gửi lên Server.
-3. Server giải mã SPC, lấy Key, đóng gói thành **CKC** trả về.
-4. HĐH giải mã **CKC**, lấy Key và phát video.
+2. **Validation (Xác thực Playlist):**
+   Trong file `.m3u8` xuất hiện các thẻ bắt buộc để định tuyến DRM của Apple:
+   `#EXT-X-KEY:METHOD=SAMPLE-AES,URI="skd://movie_123",KEYFORMAT="com.apple.streamingkeydelivery"`
+
+3. **Client Behavior (Safari nhận diện & Phát SPC):**
+   Khi Safari parse file `master.m3u8`, trình duyệt sẽ phát hiện thẻ `#EXT-X-KEY`. Trình phát sẽ trích xuất URI (`skd://movie_123`) và yêu cầu hệ điều hành đóng gói các thông tin thiết bị vào một request gọi là **SPC (Server Playback Context)**. 
+   Safari bắn request này lên License Server để xin khóa, hoàn thành trọn vẹn kịch bản kích hoạt ở phía Client.
