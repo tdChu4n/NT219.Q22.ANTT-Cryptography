@@ -158,6 +158,15 @@ export type DrmInfo = {
   history: DrmRequestStat[];
 };
 
+export type TtffSample = {
+  ts: number;
+  manifestId: string;
+  manifestTitle: string;
+  scheme: MockManifest['scheme'];
+  drm: boolean;
+  timeMs: number;
+};
+
 const EMPTY_DRM_INFO: DrmInfo = {
   keySystem: null,
   licenseServer: null,
@@ -213,6 +222,8 @@ export type UseShakaPlayerReturn = {
   pinStatus: PinStatus;
   playback: PlaybackState;
   logs: LogEntry[];
+  lastTtff: TtffSample | null;
+  ttffHistory: TtffSample[];
   load: (manifest: MockManifest, opts?: LoadOptions) => Promise<void>;
   unload: () => Promise<void>;
   selectTrack: (trackId: number) => void;
@@ -270,11 +281,17 @@ export function useShakaPlayer(
   const [pinStatus, setPinStatus] = useState<PinStatus>(EMPTY_PIN_STATUS);
   const [playback, setPlayback] = useState<PlaybackState>(EMPTY_PLAYBACK);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [lastTtff, setLastTtff] = useState<TtffSample | null>(null);
+  const [ttffHistory, setTtffHistory] = useState<TtffSample[]>([]);
 
   // Bộ đếm bytes của request gần nhất (đo trong request filter, đọc lại
   // trong response filter). Dùng Map<uri, bytes> để hỗ trợ song song
   // (audio + video license trong cùng một phim).
   const pendingRequestBytesRef = useRef<Map<string, number>>(new Map());
+  const pendingTtffRef = useRef<{
+    startedAt: number;
+    sample: Omit<TtffSample, 'timeMs' | 'ts'>;
+  } | null>(null);
 
   // Counter monotonic cho LogEntry.id (tránh trùng key React khi spam log).
   const logIdRef = useRef(0);
@@ -353,6 +370,23 @@ export function useShakaPlayer(
     const onPlaying = () => {
       setError(null);
       setStatus('ready');
+    };
+    const finalizeTtff = () => {
+      if (!pendingTtffRef.current) return;
+      const { startedAt, sample } = pendingTtffRef.current;
+      const row: TtffSample = {
+        ...sample,
+        timeMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        ts: Date.now(),
+      };
+      pendingTtffRef.current = null;
+      setLastTtff(row);
+      setTtffHistory((prev) => [row, ...prev].slice(0, 40));
+      pushLog(
+        'info',
+        'playback',
+        `TTFF ${row.drm ? 'DRM' : 'CLEAR'} · ${row.timeMs}ms · ${row.manifestTitle}`,
+      );
     };
     videoRef.current.addEventListener('playing', onPlaying);
 
@@ -566,6 +600,10 @@ export function useShakaPlayer(
         );
       }
     };
+    const onLoadedData = () => {
+      syncFromVideo();
+      finalizeTtff();
+    };
     const onPlay = () => {
       syncFromVideo({ paused: false });
       pushLog('info', 'playback', 'Play');
@@ -605,6 +643,7 @@ export function useShakaPlayer(
     video?.addEventListener('volumechange', onVolumeChange);
     video?.addEventListener('ratechange', onRateChange);
     video?.addEventListener('loadedmetadata', onLoadedMetadata);
+    video?.addEventListener('loadeddata', onLoadedData);
     video?.addEventListener('play', onPlay);
     video?.addEventListener('pause', onPauseEvt);
     video?.addEventListener('seeking', onSeeking);
@@ -678,6 +717,7 @@ export function useShakaPlayer(
       video?.removeEventListener('volumechange', onVolumeChange);
       video?.removeEventListener('ratechange', onRateChange);
       video?.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video?.removeEventListener('loadeddata', onLoadedData);
       video?.removeEventListener('play', onPlay);
       video?.removeEventListener('pause', onPauseEvt);
       video?.removeEventListener('seeking', onSeeking);
@@ -705,6 +745,15 @@ export function useShakaPlayer(
         keyIds: manifest.keyId ? [manifest.keyId] : [],
       });
       setPinStatus({ ...EMPTY_PIN_STATUS });
+      pendingTtffRef.current = {
+        startedAt: performance.now(),
+        sample: {
+          manifestId: manifest.id,
+          manifestTitle: manifest.title,
+          scheme: manifest.scheme,
+          drm: !!manifest.drm?.keySystem,
+        },
+      };
       pushLog(
         'info',
         'manifest',
@@ -779,6 +828,7 @@ export function useShakaPlayer(
           }));
         }
       } catch (err) {
+        pendingTtffRef.current = null;
         const e = err as ShakaError;
         const msg = `Load fail [${e.category ?? '?'}/${e.code ?? '?'}]: ${
           e.data ? e.data.join(' ') : e.message ?? 'unknown error'
@@ -819,6 +869,7 @@ export function useShakaPlayer(
     setDrmInfo(EMPTY_DRM_INFO);
     setPinStatus(EMPTY_PIN_STATUS);
     setPlayback(EMPTY_PLAYBACK);
+    pendingTtffRef.current = null;
   }, []);
 
   const selectTrack = useCallback(
@@ -955,6 +1006,8 @@ export function useShakaPlayer(
     pinStatus,
     playback,
     logs,
+    lastTtff,
+    ttffHistory,
     load,
     unload,
     selectTrack,

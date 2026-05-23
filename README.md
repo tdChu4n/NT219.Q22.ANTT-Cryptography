@@ -234,6 +234,11 @@ Watermarking trong đồ án là PoC kiểu “nhúng vào DCT tần số trung 
 - **Security:** Tỉ lệ chống tải lậu thành công (100%), rủi ro lộ khóa. Kết quả Token Replay bị chặn (pass/fail).
 - **Watermarking:** Detectability rate (% phát hiện đúng nguồn rò rỉ), False-positive rate, Chi phí xử lý nhúng/dò tìm (ms/frame).
 
+Benchmark đã có:
+- `benchmarks/license-latency.md`
+- `benchmarks/aes-throughput.md`
+- `benchmarks/ttff-drm-vs-clear.md`
+
 ---
 
 ## 9. Deliverables & Cấu trúc Repository
@@ -257,6 +262,8 @@ project-root/
 ```
 
 Hướng dẫn chạy server cho nhóm: [docs/run-server.md](docs/run-server.md).
+Tài liệu player: [docs/player.md](docs/player.md).
+Sơ đồ kiến trúc runtime: [docs/architecture.md](docs/architecture.md).
 
 ---
 

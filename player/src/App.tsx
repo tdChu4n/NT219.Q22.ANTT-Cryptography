@@ -171,6 +171,12 @@ export default function App() {
             {activeManifest && (
               <span className={styles.statusUri}>· {activeManifest.title}</span>
             )}
+            {shaka.lastTtff && (
+              <span className={styles.statusUri}>
+                · TTFF {shaka.lastTtff.drm ? 'DRM' : 'CLEAR'}:{' '}
+                {shaka.lastTtff.timeMs} ms
+              </span>
+            )}
             <span className={styles.statusShortcuts} aria-hidden>
               · phím tắt: Space/K play · ←/→ J/L ±5s · M mute · F fullscreen
             </span>
