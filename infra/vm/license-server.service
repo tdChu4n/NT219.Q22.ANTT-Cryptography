@@ -10,11 +10,14 @@ User=nt219-license
 Group=nt219-license
 WorkingDirectory=/opt/nt219/app/license-server
 EnvironmentFile=/etc/nt219/license-server.env
-ExecStart=/usr/bin/npm start
+ExecStart=/usr/local/bin/node src/index.js
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20
 KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
 
 # Basic service hardening. Keep write access to generated demo JWT keys unless
 # you provision keys elsewhere.
