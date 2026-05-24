@@ -55,6 +55,8 @@ app.post('/api/auth/login', (req, res) => {
 // License: POST /api/license (T2.4 — đầy đủ)
 const { router: licenseRouter, setDb } = require('./routes/license');
 app.use('/api/license', licenseRouter);
+// Alias /license cho nginx CDN proxy (nginx forward /license → vm1:3000/license)
+app.use('/license', licenseRouter);
 
 // KMS: POST /kms/rotate — T3.5
 const kmsRotateRouter = require('./kms/kms_rotate');

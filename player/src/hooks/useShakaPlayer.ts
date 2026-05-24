@@ -208,10 +208,14 @@ const EMPTY_PIN_STATUS: PinStatus = {
 export type LoadOptions = {
   /**
    * Khi bật, override toàn bộ license server của manifest về `/license`
-   * (Vite proxy → cdn-sim → license-server). Hữu ích để xác minh wiring
-   * trước khi T2.4/T2.5 hoàn thành.
+   * (Vite proxy → License Server). Hữu ích để xác minh wiring.
    */
   overrideToInternalLicense?: boolean;
+  /**
+   * content_id gửi kèm trong license request body. Nếu không truyền,
+   * dùng manifest.contentId, fallback về 'movie_123'.
+   */
+  contentId?: string;
 };
 
 export type UseShakaPlayerReturn = {
@@ -292,6 +296,20 @@ export function useShakaPlayer(
     startedAt: number;
     sample: Omit<TtffSample, 'timeMs' | 'ts'>;
   } | null>(null);
+
+  // ---- Auth / device key state (persists across loads) -------------------
+  // JWT cache — tránh fetch /api/auth/login lại khi token còn hiệu lực.
+  const jwtCacheRef = useRef<{ token: string; expiresAt: number } | null>(null);
+  // Device RSA-2048 OAEP key pair — lưu localStorage, load lại giữa sessions.
+  const deviceKeyRef = useRef<{
+    publicKeyPem: string;
+    privateKey: CryptoKey;
+    deviceId: string;
+  } | null>(null);
+  // Ánh xạ license-uri → device private key đang chờ decrypt response.
+  const pendingDecryptKeyRef = useRef<Map<string, CryptoKey>>(new Map());
+  // content_id hiện tại (set khi load(), dùng trong license request filter).
+  const currentContentIdRef = useRef<string>('movie_123');
 
   // Counter monotonic cho LogEntry.id (tránh trùng key React khi spam log).
   const logIdRef = useRef(0);
@@ -432,75 +450,304 @@ export function useShakaPlayer(
     player.addEventListener('adaptation', refreshTracks);
 
     // ---- License request / response filters ------------------------------
-    // Đăng ký một lần khi mount; lifecycle gắn với player instance.
-    // RequestType.LICENSE = 2 trong Shaka v4. Đọc enum để code rõ ý đồ.
+    // Shaka v4 awaits filters nếu chúng trả về Promise — dùng async để
+    // thực hiện WebCrypto + fetch JWT mà không block UI thread.
     const RequestType = shaka.net.NetworkingEngine.RequestType;
     const networkingEngine = player.getNetworkingEngine();
 
-    const onLicenseRequest = (
-      type: number,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      request: any,
-    ) => {
-      if (type !== RequestType.LICENSE) return;
-
-      const uri = request.uris?.[0] ?? '';
-      // Chỉ gắn custom header cho license endpoint NỘI BỘ. Header tuỳ
-      // chỉnh sẽ trigger CORS preflight OPTIONS — license proxy công cộng
-      // (vd: cwip-shaka-proxy) không allow `X-Player-Build` trong
-      // Access-Control-Allow-Headers → preflight fail → 6001 LICENSE
-      // _REQUEST_FAILED. Pattern check: URI relative hoặc same-origin
-      // hoặc trỏ tới cdn-sim/license-server local.
-      const isInternal =
+    // Helper: kiểm tra URI có phải endpoint nội bộ (License Server VM).
+    function isInternalUri(uri: string): boolean {
+      return (
         uri.startsWith('/') ||
         uri.startsWith(window.location.origin) ||
-        /\b(localhost|cdn\.local|cdn-sim|license-server)\b/.test(uri);
+        /\b(localhost|cdn\.local|cdn-sim|license-server|192\.168\.155)\b/.test(uri)
+      );
+    }
 
-      if (isInternal) {
-        request.headers = request.headers ?? {};
-        request.headers['X-Player-Build'] = 'NT219-T1.7';
-        // TODO[T2.4]: gắn JWT entitlement
-        //   request.headers['Authorization'] = `Bearer ${getEntitlementToken()}`;
-        // TODO[T2.5]: gửi device public key cho RSA-OAEP key wrap
-        //   request.headers['X-Device-Pubkey'] = base64(devicePubKey);
+    // Helper: Lấy JWT từ cache hoặc fetch mới từ /api/auth/login.
+    async function getOrFetchJWT(): Promise<string> {
+      const now = Date.now() / 1000;
+      if (jwtCacheRef.current && jwtCacheRef.current.expiresAt > now + 60) {
+        return jwtCacheRef.current.token;
       }
-
-      const bodyBytes =
-        request.body instanceof ArrayBuffer
-          ? request.body.byteLength
-          : request.body?.byteLength ?? 0;
-      pendingRequestBytesRef.current.set(uri || '<unknown>', bodyBytes);
-    };
-
-    const onLicenseResponse = (
-      type: number,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      response: any,
-    ) => {
-      if (type !== RequestType.LICENSE) return;
-      const uri = response.uri ?? response.originalUri ?? '<unknown>';
-      const requestBytes = pendingRequestBytesRef.current.get(uri) ?? 0;
-      pendingRequestBytesRef.current.delete(uri);
-
-      const stat: DrmRequestStat = {
-        ts: Date.now(),
-        uri,
-        status: 'ok',
-        timeMs: response.timeMs ?? 0,
-        requestBytes,
-        responseBytes: response.data?.byteLength ?? 0,
-      };
-      setDrmInfo((prev) => ({
-        ...prev,
-        licenseRequests: prev.licenseRequests + 1,
-        lastLicense: stat,
-        history: [stat, ...prev.history].slice(0, 8),
-      }));
+      const resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'demo_user' }),
+      });
+      if (!resp.ok) throw new Error(`Login failed: HTTP ${resp.status}`);
+      const data = (await resp.json()) as { token: string };
+      const [, payloadB64] = data.token.split('.');
+      const payload = JSON.parse(
+        atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')),
+      ) as { exp: number };
+      jwtCacheRef.current = { token: data.token, expiresAt: payload.exp };
       pushLog(
         'info',
         'license',
-        `License OK · ${stat.timeMs.toFixed(0)}ms · ${stat.responseBytes}B`,
+        `[Auth] JWT acquired · exp ${new Date(payload.exp * 1000).toLocaleTimeString()}`,
       );
+      return data.token;
+    }
+
+    // Helper: Lấy hoặc sinh RSA-2048 OAEP device key pair (persist localStorage).
+    async function getOrGenerateDeviceKey(): Promise<{
+      publicKeyPem: string;
+      privateKey: CryptoKey;
+      deviceId: string;
+    }> {
+      if (deviceKeyRef.current) return deviceKeyRef.current;
+
+      const stored = localStorage.getItem('nt219_device_key');
+      if (stored) {
+        try {
+          const { publicKeyPem, privateKeyJwk, deviceId } = JSON.parse(stored) as {
+            publicKeyPem: string;
+            privateKeyJwk: JsonWebKey;
+            deviceId: string;
+          };
+          const privateKey = await crypto.subtle.importKey(
+            'jwk',
+            privateKeyJwk,
+            { name: 'RSA-OAEP', hash: 'SHA-256' },
+            false,
+            ['decrypt'],
+          );
+          deviceKeyRef.current = { publicKeyPem, privateKey, deviceId };
+          pushLog(
+            'info',
+            'license',
+            `[Device] RSA key loaded · device=${deviceId.slice(0, 8)}…`,
+          );
+          return deviceKeyRef.current;
+        } catch {
+          /* key bị hỏng — generate lại */
+        }
+      }
+
+      pushLog('info', 'license', '[Device] Generating RSA-2048 OAEP key pair…');
+      const kp = await crypto.subtle.generateKey(
+        {
+          name: 'RSA-OAEP',
+          modulusLength: 2048,
+          publicExponent: new Uint8Array([1, 0, 1]),
+          hash: 'SHA-256',
+        },
+        true,
+        ['encrypt', 'decrypt'],
+      );
+      const pubDer = await crypto.subtle.exportKey('spki', kp.publicKey);
+      const pubB64 = btoa(String.fromCharCode(...new Uint8Array(pubDer)));
+      const publicKeyPem = `-----BEGIN PUBLIC KEY-----\n${pubB64.match(/.{1,64}/g)!.join('\n')}\n-----END PUBLIC KEY-----`;
+      const privateKeyJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+      const deviceId = crypto.randomUUID();
+      localStorage.setItem(
+        'nt219_device_key',
+        JSON.stringify({ publicKeyPem, privateKeyJwk, deviceId }),
+      );
+      deviceKeyRef.current = { publicKeyPem, privateKey: kp.privateKey, deviceId };
+      pushLog(
+        'info',
+        'license',
+        `[Device] RSA-2048 generated · device=${deviceId.slice(0, 8)}…`,
+      );
+      return deviceKeyRef.current;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onLicenseRequest = async (type: number, request: any): Promise<void> => {
+      if (type !== RequestType.LICENSE) return;
+
+      const uri = request.uris?.[0] ?? '';
+      const bodyBytes =
+        request.body instanceof ArrayBuffer
+          ? request.body.byteLength
+          : (request.body as Uint8Array | null)?.byteLength ?? 0;
+
+      if (!isInternalUri(uri)) {
+        // Public proxy (vd: cwip-shaka-proxy) — không thêm custom header
+        // tránh CORS preflight fail.
+        pendingRequestBytesRef.current.set(uri || '<unknown>', bodyBytes);
+        return;
+      }
+
+      // Kiểm tra body có phải ClearKey JSON {"kids": [...]} không.
+      let isClearKey = false;
+      let clearKeyKids: string[] = [];
+      if (request.body) {
+        try {
+          const txt = new TextDecoder().decode(request.body as ArrayBuffer);
+          const parsed = JSON.parse(txt) as { kids?: string[] };
+          if (Array.isArray(parsed.kids)) {
+            isClearKey = true;
+            clearKeyKids = parsed.kids;
+          }
+        } catch {
+          /* Widevine binary challenge — không phải JSON */
+        }
+      }
+
+      if (isClearKey) {
+        // ClearKey flow: JWT + device RSA-OAEP → custom JSON body.
+        try {
+          const [device, jwt] = await Promise.all([
+            getOrGenerateDeviceKey(),
+            getOrFetchJWT(),
+          ]);
+
+          // base64url KID → hex (16 bytes = 32 hex chars)
+          let kidHex = '36ff7e0cd396186 5b0f71b7ac775cf76'.replace(/\s/g, '');
+          if (clearKeyKids.length > 0) {
+            const b64url = clearKeyKids[0];
+            const pad = b64url.length % 4 === 0 ? '' : '='.repeat(4 - (b64url.length % 4));
+            const b64 = (b64url + pad).replace(/-/g, '+').replace(/_/g, '/');
+            const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+            kidHex = Array.from(bytes)
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join('');
+          }
+
+          const nonce = crypto.randomUUID();
+          const customBody = JSON.stringify({
+            kid: kidHex,
+            device_id: device.deviceId,
+            device_public_key_pem: device.publicKeyPem,
+            nonce,
+            content_id: currentContentIdRef.current,
+          });
+          const encoded = new TextEncoder().encode(customBody);
+
+          request.headers = {
+            ...(request.headers ?? {}),
+            Authorization: `Bearer ${jwt}`,
+            'Content-Type': 'application/json',
+            'X-Player-Build': 'NT219-T1.7',
+          };
+          request.body = encoded.buffer;
+
+          pendingDecryptKeyRef.current.set(uri || '<unknown>', device.privateKey);
+          pendingRequestBytesRef.current.set(uri || '<unknown>', encoded.byteLength);
+          pushLog(
+            'info',
+            'license',
+            `[ClearKey→Custom] KID ${kidHex.slice(0, 8)}… · content=${currentContentIdRef.current}`,
+          );
+        } catch (err) {
+          pushLog('error', 'license', `[DRM] Request filter: ${(err as Error).message}`);
+          throw err;
+        }
+      } else {
+        // Non-ClearKey (Widevine binary) — gắn JWT header nếu có.
+        request.headers = {
+          ...(request.headers ?? {}),
+          'X-Player-Build': 'NT219-T1.7',
+          ...(jwtCacheRef.current
+            ? { Authorization: `Bearer ${jwtCacheRef.current.token}` }
+            : {}),
+        };
+        pendingRequestBytesRef.current.set(uri || '<unknown>', bodyBytes);
+      }
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onLicenseResponse = async (type: number, response: any): Promise<void> => {
+      if (type !== RequestType.LICENSE) return;
+      const uri = response.uri ?? response.originalUri ?? '<unknown>';
+      const privateKey = pendingDecryptKeyRef.current.get(uri);
+      const requestBytes = pendingRequestBytesRef.current.get(uri) ?? 0;
+      pendingRequestBytesRef.current.delete(uri);
+
+      if (!privateKey) {
+        // Public proxy hoặc Widevine binary — ghi stat bình thường.
+        const stat: DrmRequestStat = {
+          ts: Date.now(),
+          uri,
+          status: 'ok',
+          timeMs: response.timeMs ?? 0,
+          requestBytes,
+          responseBytes: (response.data as ArrayBuffer | null)?.byteLength ?? 0,
+        };
+        setDrmInfo((prev) => ({
+          ...prev,
+          licenseRequests: prev.licenseRequests + 1,
+          lastLicense: stat,
+          history: [stat, ...prev.history].slice(0, 8),
+        }));
+        pushLog(
+          'info',
+          'license',
+          `License OK · ${stat.timeMs.toFixed(0)}ms · ${stat.responseBytes}B`,
+        );
+        return;
+      }
+
+      // Custom license server response: RSA-OAEP decrypt → ClearKey response.
+      pendingDecryptKeyRef.current.delete(uri);
+      try {
+        const jsonText = new TextDecoder().decode(response.data as ArrayBuffer);
+        const lic = JSON.parse(jsonText) as {
+          kid: string;
+          encrypted_key: string;
+          issued_at: number;
+          expires_at: number;
+          error?: string;
+        };
+        if (lic.error) throw new Error(lic.error);
+
+        const encBytes = Uint8Array.from(atob(lic.encrypted_key), (c) =>
+          c.charCodeAt(0),
+        );
+        const contentKeyBuf = await crypto.subtle.decrypt(
+          { name: 'RSA-OAEP' },
+          privateKey,
+          encBytes.buffer,
+        );
+
+        // kidHex → base64url (no padding)
+        const kidBytes = new Uint8Array(
+          lic.kid.match(/.{2}/g)!.map((b) => parseInt(b, 16)),
+        );
+        const kidB64url = btoa(String.fromCharCode(...kidBytes))
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=/g, '');
+
+        // content key → base64url (no padding)
+        const keyB64url = btoa(String.fromCharCode(...new Uint8Array(contentKeyBuf)))
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=/g, '');
+
+        const clearKeyResp = JSON.stringify({
+          keys: [{ kty: 'oct', k: keyB64url, kid: kidB64url }],
+          type: 'temporary',
+        });
+        const newData = new TextEncoder().encode(clearKeyResp);
+        response.data = newData.buffer;
+
+        const stat: DrmRequestStat = {
+          ts: Date.now(),
+          uri,
+          status: 'ok',
+          timeMs: response.timeMs ?? 0,
+          requestBytes,
+          responseBytes: newData.byteLength,
+        };
+        setDrmInfo((prev) => ({
+          ...prev,
+          licenseRequests: prev.licenseRequests + 1,
+          lastLicense: stat,
+          history: [stat, ...prev.history].slice(0, 8),
+        }));
+        pushLog(
+          'info',
+          'license',
+          `[ClearKey] RSA-OAEP→key OK · ${stat.timeMs}ms · exp ${new Date(lic.expires_at * 1000).toLocaleTimeString()}`,
+        );
+      } catch (err) {
+        pushLog('error', 'license', `[ClearKey] Response: ${(err as Error).message}`);
+        throw err;
+      }
     };
 
     networkingEngine.registerRequestFilter(onLicenseRequest);
@@ -699,6 +946,7 @@ export function useShakaPlayer(
     }, 1000);
 
     return () => {
+      pendingDecryptKeyRef.current.clear();
       try {
         networkingEngine.unregisterRequestFilter(onLicenseRequest);
         networkingEngine.unregisterResponseFilter(onLicenseResponse);
@@ -745,6 +993,10 @@ export function useShakaPlayer(
         keyIds: manifest.keyId ? [manifest.keyId] : [],
       });
       setPinStatus({ ...EMPTY_PIN_STATUS });
+      // Set content_id cho license request filter (dùng opts > manifest > default).
+      currentContentIdRef.current =
+        opts.contentId ?? manifest.contentId ?? 'movie_123';
+      pendingDecryptKeyRef.current.clear();
       pendingTtffRef.current = {
         startedAt: performance.now(),
         sample: {

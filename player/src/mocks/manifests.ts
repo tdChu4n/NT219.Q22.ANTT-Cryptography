@@ -43,6 +43,11 @@ export type MockManifest = {
   securityLevel?: 'L1' | 'L3' | 'CLEAR';
   /** KID hex 32 ký tự — copy từ packager output để hiển thị trong panel. */
   keyId?: string;
+  /**
+   * content_id gửi kèm trong body của license request tới License Server.
+   * Phải khớp với collection entitlements trong MongoDB.
+   */
+  contentId?: string;
   /** Ghi chú vận hành (vd: cần chạy stack docker, đang chờ T2.x …). */
   notes?: string;
 };
@@ -82,39 +87,41 @@ export const MOCK_MANIFESTS: MockManifest[] = [
   },
   {
     id: 'local-cdn-sim-widevine-https',
-    title: 'Local cdn-sim · Widevine (HTTPS + cert pin)',
+    title: 'Local VM · ClearKey 4-period (Vite proxy)',
     description:
-      'Manifest do packager (T2.1–T2.3) sinh, phục vụ qua cdn-sim TLS 1.3 + HSTS. License đi qua HTTPS, Player kiểm tra X-CDN-Cert-Pin (RFC 7469) — đúng kịch bản T1.6.',
-    uri: 'https://localhost:8443/video/manifest.mpd',
+      'Manifest 4-period key rotation do shaka-packager sinh, phục vụ qua VM2 CDN nginx. License qua VM1 License Server với JWT RS256 + RSA-OAEP key wrap + nonce chống replay.',
+    uri: '/video/manifest.mpd',
     format: 'DASH',
     scheme: 'cenc',
     drm: {
-      keySystem: 'com.widevine.alpha',
-      licenseServer: 'https://localhost:8443/license',
+      keySystem: 'org.w3.clearkey',
+      licenseServer: '/license',
     },
+    contentId: 'movie_123',
     source: 'local',
     securityLevel: 'L3',
-    keyId: '19d57c645156a5a0ddd23849e6377665',
+    keyId: '36ff7e0cd396186 5b0f71b7ac775cf76',
     notes:
-      'Trước khi chọn: chạy `bash cdn-sim/gen-selfsigned-cert.sh` rồi `docker compose up -d cdn-sim license-server`. Trust cert tạm trong OS để tránh ERR_CERT_AUTHORITY_INVALID. Cập nhật pin trong player/src/config/certPins.ts.',
+      'Cần VM1 (192.168.155.10:3000) + VM2 (192.168.155.11 nginx). Vite proxy: /video→VM2, /license→VM1, /api→VM1. Player tự động: 1) Fetch JWT /api/auth/login 2) Generate RSA-2048 device key 3) License request với RSA-OAEP wrap 4) Decrypt key → ClearKey response.',
   },
   {
     id: 'local-cdn-sim-widevine-http',
-    title: 'Local cdn-sim · Widevine (HTTP dev fallback)',
+    title: 'Local VM · ClearKey (direct HTTP — debug)',
     description:
-      'Cùng manifest packager nhưng đi qua HTTP — fallback khi chưa generate cert hoặc đang debug HTTPS. License trỏ /license (Vite proxy → cdn-sim → license-server).',
-    uri: 'http://localhost:8080/video/manifest.mpd',
+      'Trỏ trực tiếp vào VM2 CDN qua HTTP (không qua Vite proxy). Dùng khi debug CORS hoặc Vite proxy chưa cấu hình đúng.',
+    uri: 'http://192.168.155.11/video/manifest.mpd',
     format: 'DASH',
     scheme: 'cenc',
     drm: {
-      keySystem: 'com.widevine.alpha',
+      keySystem: 'org.w3.clearkey',
       licenseServer: '/license',
     },
+    contentId: 'movie_123',
     source: 'local',
     securityLevel: 'L3',
-    keyId: '19d57c645156a5a0ddd23849e6377665',
+    keyId: '36ff7e0cd396186 5b0f71b7ac775cf76',
     notes:
-      'HTTP-only path: cert pinning sẽ skip, T2.4/T2.5 vẫn chưa wire JWT — Player sẽ báo lỗi DRM cho tới khi license-server phát license thật.',
+      'VM2 nginx phải bật CORS (Access-Control-Allow-Origin: *) cho /video. License vẫn đi qua Vite proxy /license → VM1:3000.',
   },
   {
     id: 'shaka-angel-one',
