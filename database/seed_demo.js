@@ -59,7 +59,7 @@ async function seed() {
                 { kid_hex: kidHex },
                 {
                     $set: {
-                        kid_hex,
+                        kid_hex: kidHex,
                         key_enc_b64,
                         key_enc_iv_b64: iv_b64,
                         auth_tag_b64,
@@ -76,7 +76,7 @@ async function seed() {
             await db.collection('kids').updateOne(
                 { kid_hex: kidHex },
                 {
-                    $set: { kid_hex, content_id: 'movie_123' },
+                    $set: { kid_hex: kidHex, content_id: 'movie_123' },
                     $setOnInsert: { created_at: new Date() },
                 },
                 { upsert: true },
