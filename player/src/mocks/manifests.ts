@@ -100,7 +100,7 @@ export const MOCK_MANIFESTS: MockManifest[] = [
     contentId: 'movie_123',
     source: 'local',
     securityLevel: 'L3',
-    keyId: '36ff7e0cd396186 5b0f71b7ac775cf76',
+    keyId: '36ff7e0cd3961865b0f71b7ac775cf76',
     notes:
       'Cần VM1 (192.168.155.10:3000) + VM2 (192.168.155.11 nginx). Vite proxy: /video→VM2, /license→VM1, /api→VM1. Player tự động: 1) Fetch JWT /api/auth/login 2) Generate RSA-2048 device key 3) License request với RSA-OAEP wrap 4) Decrypt key → ClearKey response.',
   },
@@ -119,7 +119,7 @@ export const MOCK_MANIFESTS: MockManifest[] = [
     contentId: 'movie_123',
     source: 'local',
     securityLevel: 'L3',
-    keyId: '36ff7e0cd396186 5b0f71b7ac775cf76',
+    keyId: '36ff7e0cd3961865b0f71b7ac775cf76',
     notes:
       'VM2 nginx phải bật CORS (Access-Control-Allow-Origin: *) cho /video. License vẫn đi qua Vite proxy /license → VM1:3000.',
   },
@@ -147,4 +147,4 @@ export const MOCK_MANIFESTS: MockManifest[] = [
   },
 ];
 
-export const DEFAULT_MANIFEST_ID = MOCK_MANIFESTS[0]!.id;
+export const DEFAULT_MANIFEST_ID = 'local-cdn-sim-widevine-https';

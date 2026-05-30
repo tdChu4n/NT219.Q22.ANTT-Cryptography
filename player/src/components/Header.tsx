@@ -21,20 +21,14 @@ export default function Header({ user = null }: HeaderProps) {
           </svg>
         </div>
         <div>
-          <div className={styles.title}>NT219 · Secure Streaming</div>
-          <div className={styles.subtitle}>Shaka Player · DRM Demo (T1.7)</div>
+          <div className={styles.title}>SecureStream</div>
+          <div className={styles.subtitle}>Nền tảng phát video bảo mật</div>
         </div>
       </div>
 
       <nav className={styles.nav}>
-        <a href="#player">Player</a>
-        <a
-          href="https://shaka-player-demo.appspot.com/docs/api/index.html"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Shaka Docs
-        </a>
+        <a href="#player">Trang chủ</a>
+        <a href="#player">Thư viện</a>
       </nav>
 
       <div className={styles.user}>
@@ -44,8 +38,8 @@ export default function Header({ user = null }: HeaderProps) {
             <span className={styles.userRole}>{user.role}</span>
           </>
         ) : (
-          <button type="button" className="primary" disabled title="Sẽ triển khai ở Sprint 2">
-            Đăng nhập (mock)
+          <button type="button" className="primary">
+            Đăng nhập
           </button>
         )}
       </div>
