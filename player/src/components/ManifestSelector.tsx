@@ -1,4 +1,3 @@
-import { type ChangeEvent } from 'react';
 import type { MockManifest } from '../mocks/manifests';
 import styles from './ManifestSelector.module.css';
 
@@ -13,64 +12,54 @@ type Props = {
   disabled?: boolean;
 };
 
+function schemeBadge(scheme: MockManifest['scheme']) {
+  if (scheme === 'clear') return null;
+  return <span className={styles.badgeDrm}>🔒 DRM</span>;
+}
+
 export default function ManifestSelector({
   manifests,
   selectedId,
   onSelect,
-  onReload,
-  customUri,
-  onCustomUriChange,
-  onLoadCustom,
   disabled,
 }: Props) {
-  const handleChange = (e: ChangeEvent<HTMLSelectElement>) => onSelect(e.target.value);
+  const localItems = manifests.filter((m) => m.source === 'local');
+  const publicItems = manifests.filter((m) => m.source === 'public');
+
+  const renderItem = (m: MockManifest) => (
+    <button
+      key={m.id}
+      type="button"
+      className={`${styles.item} ${selectedId === m.id ? styles.itemActive : ''}`}
+      onClick={() => onSelect(m.id)}
+      disabled={disabled}
+    >
+      <div className={styles.itemTitle}>{m.title.replace(/·.*$/, '').trim()}</div>
+      <div className={styles.itemDesc}>{m.description.split('.')[0]}.</div>
+      <div className={styles.itemMeta}>
+        {schemeBadge(m.scheme)}
+        <span className={styles.badgeFormat}>{m.format}</span>
+      </div>
+    </button>
+  );
 
   return (
     <section className={styles.wrap}>
-      <h3 className={styles.heading}>Manifest (mock)</h3>
+      {localItems.length > 0 && (
+        <>
+          <h3 className={styles.heading}>Nội dung của tôi</h3>
+          <div className={styles.list}>{localItems.map(renderItem)}</div>
+        </>
+      )}
 
-      <div className={styles.row}>
-        <label htmlFor="manifest-select" className={styles.label}>
-          Chọn nguồn:
-        </label>
-        <select
-          id="manifest-select"
-          value={selectedId}
-          onChange={handleChange}
-          disabled={disabled}
-        >
-          {manifests.map((m) => (
-            <option value={m.id} key={m.id}>
-              [{m.source}] {m.title} — {m.scheme}
-            </option>
-          ))}
-        </select>
-        <button type="button" onClick={onReload} disabled={disabled}>
-          Reload
-        </button>
-      </div>
-
-      <div className={styles.row}>
-        <label htmlFor="manifest-custom" className={styles.label}>
-          Hoặc URL tuỳ ý:
-        </label>
-        <input
-          id="manifest-custom"
-          type="url"
-          placeholder="https://.../manifest.mpd"
-          value={customUri}
-          onChange={(e) => onCustomUriChange(e.target.value)}
-          disabled={disabled}
-        />
-        <button
-          type="button"
-          className="primary"
-          onClick={onLoadCustom}
-          disabled={disabled || !customUri.trim()}
-        >
-          Load
-        </button>
-      </div>
+      {publicItems.length > 0 && (
+        <>
+          <h3 className={`${styles.heading} ${styles.headingSecondary}`}>
+            Nội dung mẫu
+          </h3>
+          <div className={styles.list}>{publicItems.map(renderItem)}</div>
+        </>
+      )}
     </section>
   );
 }
