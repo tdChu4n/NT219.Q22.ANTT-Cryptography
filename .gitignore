@@ -213,7 +213,9 @@ __marimo__/
 # DASH/HLS segments — output từ packager / ingest, lớn + regeneratable
 # Chỉ track manifest (.mpd, .m3u8); KHÔNG track segment binary.
 *.m4s
-*.ts
+# *.ts (đã xoá — regex này bắt nhầm TypeScript source files)
+# Segment HLS (.ts) chỉ xuất hiện trong thư mục media-processing/output
+media-processing/output/**/*.ts
 
 # Riêng các segment ở root (orphan từ lần chạy packager nhầm working dir)
 /chunk-stream*.m4s
