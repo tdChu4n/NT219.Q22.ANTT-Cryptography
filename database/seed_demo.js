@@ -4,12 +4,10 @@
  * Chạy SAU migrate_init.js, dùng cùng MONGO_URI.
  *
  *  Nạp:
- *    content_keys_enc  — tất cả content key mã hoá AES-256-GCM (từ media-processing/license_keys.json)
+ *    content_keys_enc  — content key mã hoá AES-256-GCM
  *    kids              — ánh xạ KID → content_id
- *    users             — demo_user
+ *    users             — demo_user (password: demo123, hash bcrypt)
  *    entitlements      — demo_user có quyền xem movie_123 (1 năm)
- *
- *  Hỗ trợ license_keys.json dạng object đơn hoặc array (key rotation).
  *
  *  Chạy:
  *    MONGO_URI=mongodb://nt219_app:PASS@192.168.155.10:27017/drm_platform \
@@ -27,6 +25,7 @@ function requireFromRepo(name) {
 
 requireFromRepo('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { MongoClient } = requireFromRepo('mongodb');
+const bcrypt          = requireFromRepo('bcryptjs');
 const { encryptContentKey } = require('../license-server/src/kms/kms');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
@@ -40,8 +39,7 @@ async function seed() {
         const db = client.db(DB_NAME);
 
         // ----------------------------------------------------------------
-        // 1. Content Keys từ media-processing/license_keys.json
-        //    Hỗ trợ cả single object và array (key rotation).
+        // 1. Content Keys
         // ----------------------------------------------------------------
         const keysPath = path.join(__dirname, '../media-processing/license_keys.json');
         if (!fs.existsSync(keysPath)) {
@@ -54,50 +52,48 @@ async function seed() {
             const kidHex = k.KID.replace(/-/g, '').toLowerCase();
             const { key_enc_b64, iv_b64, auth_tag_b64 } = encryptContentKey(k.Key);
 
-            // content_keys_enc — field names khớp routes/license.js dòng 122
             await db.collection('content_keys_enc').updateOne(
                 { kid_hex: kidHex },
                 {
-                    $set: {
-                        kid_hex: kidHex,
-                        key_enc_b64,
-                        key_enc_iv_b64: iv_b64,
-                        auth_tag_b64,
-                        content_id: 'movie_123',
-                    },
+                    $set: { kid_hex: kidHex, key_enc_b64, key_enc_iv_b64: iv_b64, auth_tag_b64, content_id: 'movie_123' },
                     $setOnInsert: { created_at: new Date() },
                 },
                 { upsert: true },
             );
             const periodLabel = k.period ? ` (period ${k.period})` : '';
-            console.log(`[seed] content_keys_enc upsert: KID=${kidHex.slice(0, 8)}…${periodLabel}`);
+            console.log(`[seed] content_keys_enc: KID=${kidHex.slice(0, 8)}…${periodLabel}`);
 
-            // kids — ánh xạ KID → content_id
             await db.collection('kids').updateOne(
                 { kid_hex: kidHex },
-                {
-                    $set: { kid_hex: kidHex, content_id: 'movie_123' },
-                    $setOnInsert: { created_at: new Date() },
-                },
+                { $set: { kid_hex: kidHex, content_id: 'movie_123' }, $setOnInsert: { created_at: new Date() } },
                 { upsert: true },
             );
         }
 
         // ----------------------------------------------------------------
-        // 2. Demo user
+        // 2. Demo user — password: demo123 (bcrypt cost 12)
         // ----------------------------------------------------------------
+        const DEMO_PASSWORD = 'demo123';
+        const password_hash = await bcrypt.hash(DEMO_PASSWORD, 12);
+
         await db.collection('users').updateOne(
             { user_id: 'demo_user' },
             {
-                $set: { user_id: 'demo_user', email: 'demo@nt219.local', role: 'premium' },
+                $set: {
+                    user_id:       'demo_user',
+                    email:         'demo@nt219.local',
+                    name:          'Demo User',
+                    role:          'premium',
+                    password_hash,          // bcrypt hash, cost=12
+                },
                 $setOnInsert: { created_at: new Date() },
             },
             { upsert: true },
         );
-        console.log('[seed] users upsert: demo_user');
+        console.log(`[seed] users upsert: demo_user (email=demo@nt219.local, password=${DEMO_PASSWORD})`);
 
         // ----------------------------------------------------------------
-        // 3. Entitlement demo_user → movie_123 (hết hạn sau 1 năm)
+        // 3. Entitlement demo_user → movie_123
         // ----------------------------------------------------------------
         const expiresAt = new Date(Date.now() + 365 * 24 * 3600 * 1000);
         await db.collection('entitlements').updateOne(
@@ -108,9 +104,9 @@ async function seed() {
             },
             { upsert: true },
         );
-        console.log(`[seed] entitlements upsert: demo_user → movie_123 (exp ${expiresAt.toISOString()})`);
+        console.log(`[seed] entitlements: demo_user → movie_123 (exp ${expiresAt.toISOString()})`);
 
-        console.log(`\n[seed] ✅ Seed hoàn thành! ${keys.length} content key(s) đã nạp.`);
+        console.log(`\n[seed] ✅ Hoàn thành! ${keys.length} content key(s). Tài khoản demo: demo@nt219.local / ${DEMO_PASSWORD}`);
     } catch (err) {
         console.error('[seed] ❌ Lỗi:', err.message);
         process.exit(1);
