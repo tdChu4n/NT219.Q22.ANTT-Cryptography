@@ -7,22 +7,34 @@ import { Icon } from '../components/Icon';
 
 const RAILS = [
   {
-    id: 'drm',
-    title: 'Nội dung được bảo vệ DRM',
-    sub: 'AES-128-CTR · ClearKey',
-    ids: ['bbb', 'sintel', 'tos', 'ed', 'spring'],
+    id: 'featured',
+    title: 'Đề xuất cho bạn',
+    sub: 'Dựa trên lượt xem gần đây',
+    ids: ['sintel', 'tos', 'bien-gioi', 'motion', 'spring', 'bbb'],
   },
   {
-    id: 'new',
-    title: 'Mới thêm tuần này',
-    sub: '04 phim · cập nhật T6',
-    ids: ['spring', 'cosmos', 'tos', 'caminandes', 'sintel'],
+    id: 'drm',
+    title: 'Nội dung được bảo vệ DRM',
+    sub: 'AES-128-CTR · ClearKey · Widevine',
+    ids: ['bbb', 'sintel', 'tos', 'spring', 'bien-gioi'],
   },
   {
     id: 'free',
-    title: 'Miễn phí xem thử',
-    sub: 'Không cần tài khoản',
-    ids: ['caminandes', 'cosmos', 'bbb', 'ed'],
+    title: 'Xem miễn phí — Không cần tài khoản',
+    sub: 'Clear · Không mã hoá',
+    ids: ['motion', 'uke', 'ed', 'cosmos', 'caminandes', 'khoang-lanh', 'sintel-free', 'bbb-dark'],
+  },
+  {
+    id: 'new',
+    title: 'Mới thêm gần đây',
+    sub: '5 phim · cập nhật tuần này',
+    ids: ['bien-gioi', 'bbb-dark', 'sintel-free', 'khoang-lanh', 'motion'],
+  },
+  {
+    id: 'animation',
+    title: 'Hoạt hình & Ngắn',
+    sub: 'Blender Open Movies',
+    ids: ['bbb', 'ed', 'caminandes', 'cosmos', 'spring', 'bbb-dark'],
   },
 ];
 
