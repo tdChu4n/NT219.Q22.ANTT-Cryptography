@@ -714,6 +714,99 @@
 .auth-link-inline { color: var(--accent); font-weight: 500; cursor: pointer; font-size: 11px; }
 .auth-link-inline:hover { text-decoration: underline; }
 
+/* ---- Auth: thông báo lỗi ---- */
+.auth-error {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  border-radius: 8px; padding: 10px 14px;
+  font-size: 13px; color: #ff9999;
+}
+
+/* ---- Auth: spinner nội tuyến ---- */
+.auth-spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.25);
+  border-top-color: currentColor;
+  animation: spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Auth: strength meter ---- */
+.strength {
+  display: flex; align-items: center; gap: 4px;
+  margin-top: 6px;
+}
+.strength-bar {
+  flex: 1; height: 3px; border-radius: 2px;
+  transition: background .2s;
+}
+.strength-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; margin-left: 8px; flex: 0 0 auto;
+  transition: color .2s;
+}
+
+/* ---- Auth: password rules list ---- */
+.rules {
+  list-style: none; margin: 6px 0 0; padding: 0;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
+}
+.rule {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--fg-3);
+  font-family: 'JetBrains Mono', monospace;
+}
+.rule.pass { color: var(--ok); }
+.rule-dot {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 50%; border: 1px solid var(--fg-3); flex-shrink: 0;
+}
+.auth-tiny-foot {
+  text-align: center; font-size: 12px; color: var(--fg-2); margin: 6px 0 0;
+}
+.auth-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.check-block { align-items: flex-start; }
+.check-block .check-box { margin-top: 2px; flex-shrink: 0; }
+
+/* ---- Header: user dropdown menu ---- */
+.ss-user-menu {
+  position: relative;
+}
+.ss-user-menu:hover .ss-user-dropdown,
+.ss-user-dropdown:focus-within {
+  opacity: 1; pointer-events: auto; transform: translateY(0);
+}
+.ss-user-dropdown {
+  position: absolute; top: calc(100% + 10px); right: 0;
+  min-width: 200px;
+  background: var(--bg-2); border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 6px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  opacity: 0; pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity .15s, transform .15s;
+  z-index: 100;
+}
+.ss-user-info {
+  padding: 10px 12px 8px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.ss-user-info strong { font-size: 13px; font-weight: 600; }
+.ss-user-info span   { font-size: 10px; color: var(--fg-3); letter-spacing: .06em; text-transform: uppercase; }
+.ss-user-divider     { border: none; border-top: 1px solid var(--line); margin: 4px 0; }
+.ss-user-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 8px 12px;
+  background: none; border: none; border-radius: 6px;
+  font: inherit; font-size: 13px; color: var(--fg-1);
+  cursor: pointer; text-align: left;
+}
+.ss-user-item:hover { background: var(--bg-3); color: var(--fg); }
+
 /* ============================================================
    MISC UTILITIES
    ============================================================ */
