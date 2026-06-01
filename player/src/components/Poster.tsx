@@ -1,21 +1,10 @@
 import type { Movie } from '../data/movies';
 import { Icon } from './Icon';
 
-function hexPattern(seed: number): string {
-  let s = seed;
-  const out: string[] = [];
-  for (let i = 0; i < 400; i++) {
-    s = (s * 9301 + 49297) % 233280;
-    out.push(s.toString(16).slice(0, 2).padStart(2, '0').toUpperCase());
-  }
-  return out.join(' ');
-}
-
 type PosterProps = {
   movie: Movie;
   w?: number | string;
   aspect?: string;
-  label?: string | null;
   badge?: boolean;
   title?: boolean;
 };
@@ -24,7 +13,6 @@ export const Poster = ({
   movie,
   w = 'auto',
   aspect = '2/3',
-  label = null,
   badge = true,
   title = true,
 }: PosterProps) => (
@@ -32,12 +20,22 @@ export const Poster = ({
     className={`poster ${movie.tint}`}
     style={{ width: typeof w === 'number' ? `${w}px` : w, aspectRatio: aspect }}
   >
-    <div className="poster-stripes" />
-    <div className="poster-hex">{hexPattern(movie.id.charCodeAt(0) * 100)}</div>
+    {movie.poster ? (
+      <img
+        src={movie.poster}
+        alt={movie.title}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        loading="lazy"
+      />
+    ) : (
+      <>
+        <div className="poster-stripes" />
+        <div className="poster-hex">
+          {Array.from({ length: 200 }, (_, i) => ((i * 9301 + 49297) % 233280).toString(16).slice(0, 2).toUpperCase()).join(' ')}
+        </div>
+      </>
+    )}
     <div className="poster-grad" />
-    <div className="poster-inner">
-      <div className="poster-label">{label ?? `STILL · ${movie.id.toUpperCase()}`}</div>
-    </div>
     {badge && (
       <div className="poster-badge">
         {movie.drm

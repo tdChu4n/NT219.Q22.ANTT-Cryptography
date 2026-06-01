@@ -11,9 +11,14 @@ export type Movie = {
   quality: string;
   codec: string;
   featured?: boolean;
-  /** ID trong MOCK_MANIFESTS để load vào player */
+  poster?: string;    // 2:3 portrait — URL ảnh bìa
+  backdrop?: string;  // 16:9 landscape — URL ảnh nền hero/detail
   manifestId: string;
 };
+
+// picsum.photos/seed/{seed}/{w}/{h} → ảnh đẹp, cố định theo seed
+const p = (seed: string) => `https://picsum.photos/seed/${seed}/400/600`;
+const b = (seed: string) => `https://picsum.photos/seed/${seed}/1280/720`;
 
 export const MOVIES: Movie[] = [
   // ── DRM-protected ─────────────────────────────────────────────────────────
@@ -29,6 +34,8 @@ export const MOVIES: Movie[] = [
     synopsis: 'Một chú thỏ to lớn nhưng hiền lành phải đối mặt với ba kẻ bắt nạt nhỏ con khi chúng phá huỷ tổ ấm bình yên của cậu. Cuộc phục thù được dàn dựng tinh vi và đầy bất ngờ.',
     quality: '1080p',
     codec: 'H.264',
+    poster:   p('bbb-poster'),
+    backdrop: b('bbb-back'),
     manifestId: 'local-cdn-sim-widevine-https',
   },
   {
@@ -44,6 +51,8 @@ export const MOVIES: Movie[] = [
     quality: '1080p',
     codec: 'H.265',
     featured: true,
+    poster:   p('sintel-poster'),
+    backdrop: b('sintel-back'),
     manifestId: 'shaka-sintel-widevine',
   },
   {
@@ -58,6 +67,8 @@ export const MOVIES: Movie[] = [
     synopsis: 'Trong tương lai gần, một nhóm chiến binh và nhà khoa học tập hợp tại Quảng trường Amsterdam để cứu thế giới khỏi sự huỷ diệt của những cỗ máy do chính họ tạo ra.',
     quality: '1080p',
     codec: 'H.265',
+    poster:   p('tos-poster'),
+    backdrop: b('tos-back'),
     manifestId: 'shaka-tos-widevine',
   },
   {
@@ -72,6 +83,24 @@ export const MOVIES: Movie[] = [
     synopsis: 'Một cô gái chăn cừu và con thú cưng của cô phải đối mặt với các vị thần cổ đại để giữ cho mùa xuân quay trở lại. Bộ phim mang đậm nét thần thoại Bắc Âu.',
     quality: '1080p',
     codec: 'AV1',
+    poster:   p('spring-poster'),
+    backdrop: b('spring-back'),
+    manifestId: 'shaka-tos-widevine',
+  },
+  {
+    id: 'bien-gioi',
+    title: 'Biên Giới Ánh Sáng',
+    year: 2022,
+    dur: '11:30',
+    genre: ['Khoa học viễn tưởng', 'Drama'],
+    director: 'Trần Hoàng Nam',
+    drm: true,
+    tint: 'tint-blue',
+    synopsis: 'Năm 2087, khi con người và AI sống cùng nhau, một kỹ sư trẻ phát hiện bí mật đằng sau chương trình kiểm soát thành phố và phải đưa ra lựa chọn sinh tử. Phim được bảo vệ bằng ClearKey DRM.',
+    quality: '1080p',
+    codec: 'H.265',
+    poster:   p('biengioi-poster'),
+    backdrop: b('biengioi-back'),
     manifestId: 'shaka-tos-widevine',
   },
 
@@ -88,6 +117,8 @@ export const MOVIES: Movie[] = [
     synopsis: 'Hai nhân vật khám phá một thế giới máy móc kỳ lạ, nơi giao tiếp và niềm tin trở thành thử thách lớn nhất. Bộ phim mã nguồn mở đầu tiên của Blender Foundation.',
     quality: '1080p',
     codec: 'H.264',
+    poster:   p('ed-poster'),
+    backdrop: b('ed-back'),
     manifestId: 'shaka-elephants-clear',
   },
   {
@@ -102,6 +133,8 @@ export const MOVIES: Movie[] = [
     synopsis: 'Câu chuyện về một chú cừu cô đơn được trao cơ hội thay đổi định mệnh — qua nhiều vũ trụ song song. Một bộ phim triết học ẩn sau lớp hoạt hình đầy màu sắc.',
     quality: '720p',
     codec: 'H.264',
+    poster:   p('cosmos-poster'),
+    backdrop: b('cosmos-back'),
     manifestId: 'shaka-angel-one',
   },
   {
@@ -116,10 +149,10 @@ export const MOVIES: Movie[] = [
     synopsis: 'Chú lạc đà Llama Oscar lại tiếp tục cuộc phiêu lưu hài hước trong rừng Patagonia, lần này đối mặt với kẻ thù bé nhỏ nhưng cực kỳ nguy hiểm.',
     quality: '1080p',
     codec: 'VP9',
+    poster:   p('caminandes-poster'),
+    backdrop: b('caminandes-back'),
     manifestId: 'dash-if-bbb',
   },
-
-  // ── Nội dung mới — URLs đã kiểm tra hoạt động ────────────────────────────
   {
     id: 'motion',
     title: 'Tự Do',
@@ -132,6 +165,8 @@ export const MOVIES: Movie[] = [
     synopsis: 'Một vũ công đường phố trổ tài parkour trên những mái nhà và con hẻm của thành phố châu Âu. Lời tuyên ngôn về tự do, cơ thể và không gian đô thị — không cần một câu thoại nào.',
     quality: '1080p',
     codec: 'H.264',
+    poster:   p('motion-poster'),
+    backdrop: b('motion-back'),
     manifestId: 'bitmovin-art-motion',
   },
   {
@@ -146,6 +181,8 @@ export const MOVIES: Movie[] = [
     synopsis: 'Bản nhạc ukulele dịu dàng về tình yêu và sự cô đơn giữa một thành phố ồn ào. Phim không lời thoại — chỉ có âm nhạc và hình ảnh chậm rãi kể câu chuyện.',
     quality: '720p',
     codec: 'H.264',
+    poster:   p('uke-poster'),
+    backdrop: b('uke-back'),
     manifestId: 'shaka-dig-uke',
   },
   {
@@ -160,6 +197,8 @@ export const MOVIES: Movie[] = [
     synopsis: 'Phiên bản tái bản của Big Buck Bunny với bảng màu tối và ánh sáng drama — khám phá mặt tối của vùng đồng cỏ yên bình qua con mắt của kẻ săn mồi bí ẩn.',
     quality: '1080p',
     codec: 'H.265',
+    poster:   p('bbbdark-poster'),
+    backdrop: b('bbbdark-back'),
     manifestId: 'shaka-bbb-dark',
   },
   {
@@ -174,6 +213,8 @@ export const MOVIES: Movie[] = [
     synopsis: 'Phiên bản Sintel dành cho người dùng miễn phí — không cần DRM license. Cùng hành trình, cùng cảm xúc với bản gốc, nhưng mọi khung hình đều không được mã hoá.',
     quality: '1080p',
     codec: 'H.264',
+    poster:   p('sintelfree-poster'),
+    backdrop: b('sintelfree-back'),
     manifestId: 'shaka-sintel-clear',
   },
   {
@@ -188,21 +229,9 @@ export const MOVIES: Movie[] = [
     synopsis: 'Một người đàn ông lang thang qua những con phố vắng của Hà Nội lúc bình minh, đối mặt với ký ức và những lựa chọn chưa bao giờ được thực hiện. Phim tài liệu thể nghiệm.',
     quality: '1080p',
     codec: 'H.264',
+    poster:   p('khoanglanh-poster'),
+    backdrop: b('khoanglanh-back'),
     manifestId: 'shaka-angel-one',
-  },
-  {
-    id: 'bien-gioi',
-    title: 'Biên Giới Ánh Sáng',
-    year: 2022,
-    dur: '11:30',
-    genre: ['Khoa học viễn tưởng', 'Drama'],
-    director: 'Trần Hoàng Nam',
-    drm: true,
-    tint: 'tint-blue',
-    synopsis: 'Năm 2087, khi con người và AI sống cùng nhau, một kỹ sư trẻ phát hiện bí mật đằng sau chương trình kiểm soát thành phố và phải đưa ra lựa chọn sinh tử. Phim được bảo vệ bằng ClearKey DRM.',
-    quality: '1080p',
-    codec: 'H.265',
-    manifestId: 'shaka-tos-widevine',
   },
 ];
 

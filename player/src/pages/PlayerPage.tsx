@@ -133,7 +133,7 @@ export default function PlayerPage() {
                 <span className="mono lbl">TIẾP THEO</span>
                 <div className="next-row">
                   <div className="next-thumb">
-                    <Poster movie={nextMovie} w="100%" aspect="16/9" badge={false} title={false} label="STILL" />
+                    <Poster movie={nextMovie} w="100%" aspect="16/9" badge={false} title={false} />
                   </div>
                   <div className="next-info">
                     <strong>{nextMovie.title}</strong>
