@@ -464,30 +464,36 @@ export function useShakaPlayer(
       );
     }
 
-    // Helper: Lấy JWT từ cache hoặc fetch mới từ /api/auth/login.
+    // Helper: Lấy JWT từ cache → localStorage (AuthContext) → lỗi nếu không có.
     async function getOrFetchJWT(): Promise<string> {
       const now = Date.now() / 1000;
+
+      // 1. Dùng cache trong session nếu còn hiệu lực
       if (jwtCacheRef.current && jwtCacheRef.current.expiresAt > now + 60) {
         return jwtCacheRef.current.token;
       }
-      const resp = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: 'demo_user' }),
-      });
-      if (!resp.ok) throw new Error(`Login failed: HTTP ${resp.status}`);
-      const data = (await resp.json()) as { token: string };
-      const [, payloadB64] = data.token.split('.');
-      const payload = JSON.parse(
-        atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')),
-      ) as { exp: number };
-      jwtCacheRef.current = { token: data.token, expiresAt: payload.exp };
-      pushLog(
-        'info',
-        'license',
-        `[Auth] JWT acquired · exp ${new Date(payload.exp * 1000).toLocaleTimeString()}`,
+
+      // 2. Đọc từ localStorage (đặt bởi AuthContext sau khi login)
+      const stored = localStorage.getItem('ss_token');
+      if (stored) {
+        const [, b64] = stored.split('.');
+        const payload = JSON.parse(
+          atob(b64.replace(/-/g, '+').replace(/_/g, '/')),
+        ) as { exp: number };
+        if (payload.exp > now + 60) {
+          jwtCacheRef.current = { token: stored, expiresAt: payload.exp };
+          pushLog(
+            'info',
+            'license',
+            `[Auth] JWT từ session · exp ${new Date(payload.exp * 1000).toLocaleTimeString()}`,
+          );
+          return stored;
+        }
+      }
+
+      throw new Error(
+        'Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.',
       );
-      return data.token;
     }
 
     // Helper: Lấy hoặc sinh RSA-2048 OAEP device key pair (persist localStorage).
