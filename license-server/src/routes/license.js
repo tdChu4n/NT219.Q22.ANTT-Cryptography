@@ -126,10 +126,11 @@ router.post('/', async (req, res) => {
                 });
             }
 
-            // T3.4: Kiểm tra Session Control (Max 2 devices đồng thời)
+            // T3.4: Kiểm tra Session Control (Max 2 devices đồng thời, bỏ qua session đã revoke)
             const activeSessions = await _db.collection('sessions').find({
-                user_id: decoded.userId,
-                expires_at: { $gt: new Date() }
+                user_id:    decoded.userId,
+                expires_at: { $gt: new Date() },
+                is_revoked: { $ne: true },
             }).toArray();
 
             const uniqueDevices = new Set(activeSessions.map(s => s.device_id));

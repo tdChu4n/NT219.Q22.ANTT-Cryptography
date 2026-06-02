@@ -268,6 +268,7 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
 // License routes (với rate limit + anomaly detection)
 // ------------------------------------------------------------------
 const { router: licenseRouter, setDb } = require('./routes/license');
+const { router: revokeRouter, setDb: setRevokeDb } = require('./routes/revoke');
 
 // Inject anomaly detector vào license router
 app.use((req, res, next) => {
@@ -280,6 +281,7 @@ app.use((req, res, next) => {
 
 app.use('/api/license', licenseLimiter, licenseRouter);
 app.use('/license',     licenseLimiter, licenseRouter);
+app.use('/api/license/revoke', revokeRouter);
 
 // ------------------------------------------------------------------
 // KMS
@@ -307,6 +309,7 @@ app.use((err, req, res, _next) => {
 (async () => {
     await connectMongo();
     setDb(db);
+    setRevokeDb(db);
     app.listen(port, '0.0.0.0', () => {
         console.log(`🚀 License Server tại http://0.0.0.0:${port}`);
         console.log(`   CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);
