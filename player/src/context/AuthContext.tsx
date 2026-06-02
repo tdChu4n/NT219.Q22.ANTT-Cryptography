@@ -17,6 +17,7 @@ type AuthState = {
   token: string | null;
   user: AuthUser | null;
   isAuthenticated: boolean;
+  loading: boolean;
   login: (token: string, user: AuthUser, remember?: boolean) => void;
   logout: () => void;
 };
@@ -45,12 +46,13 @@ function isTokenValid(token: string): boolean {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   // Khôi phục session: ưu tiên sessionStorage (tab session), sau đó localStorage (remember)
   useEffect(() => {
     const stored = sessionStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY);
     if (stored && isTokenValid(stored)) {
-      const payload = decodePayload(stored) as Record<string, string>;
+      const payload = (decodePayload(stored) ?? {}) as Record<string, string>;
       setToken(stored);
       setUser({
         userId: payload['userId'] ?? '',
@@ -63,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(TOKEN_KEY);
       sessionStorage.removeItem(TOKEN_KEY);
     }
+    setLoading(false);
   }, []);
 
   const login = (newToken: string, newUser: AuthUser, remember = true) => {
@@ -86,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ token, user, isAuthenticated: !!token, login, logout }}
+      value={{ token, user, isAuthenticated: !!token, loading, login, logout }}
     >
       {children}
     </AuthContext.Provider>

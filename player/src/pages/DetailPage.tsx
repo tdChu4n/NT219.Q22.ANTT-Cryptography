@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getMovieById, MOVIES } from '../data/movies';
 import { AppHeader } from '../components/AppHeader';
@@ -26,7 +27,13 @@ function Crew({ role, name }: { role: string; name: string }) {
 export default function DetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const m = getMovieById(id ?? '') ?? MOVIES[0]!;
+  const m = getMovieById(id ?? '');
+
+  useEffect(() => {
+    if (!m) navigate('/', { replace: true });
+  }, [m, navigate]);
+
+  if (!m) return null;
 
   const similar = MOVIES.filter(mv => mv.id !== m.id && mv.genre.some(g => m.genre.includes(g))).slice(0, 5);
 

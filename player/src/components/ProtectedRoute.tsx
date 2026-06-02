@@ -9,8 +9,10 @@ type Props = { children: React.ReactNode };
  * login xong có thể redirect về đúng trang.
  */
 export function ProtectedRoute({ children }: Props) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const location = useLocation();
+
+  if (loading) return null;
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;

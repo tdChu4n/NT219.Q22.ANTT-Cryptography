@@ -84,6 +84,10 @@ export default function LoginPage() {
       setApiError('Vui lòng nhập email và mật khẩu.');
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setApiError('Email không hợp lệ.');
+      return;
+    }
     setLoading(true);
     setApiError(null);
     try {
