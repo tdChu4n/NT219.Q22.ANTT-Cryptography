@@ -719,7 +719,7 @@
   font-size: 10px;
 }
 .player-log-bar-body {
-  max-height: 280px;
+  max-height: 520px;
   overflow-y: auto;
 }
 [data-theme="light"] .player-log-bar { background: #fff; border-top-color: rgba(0,0,0,0.08); }

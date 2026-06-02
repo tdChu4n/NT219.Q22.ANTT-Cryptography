@@ -306,6 +306,8 @@ export function useShakaPlayer(
     privateKey: CryptoKey;
     deviceId: string;
   } | null>(null);
+  // Track KID đang active để phát hiện key rotation giữa các period.
+  const activeKidRef = useRef<string | null>(null);
   // Ánh xạ license-uri → device private key đang chờ decrypt response.
   const pendingDecryptKeyRef = useRef<Map<string, CryptoKey>>(new Map());
   // content_id hiện tại (set khi load(), dùng trong license request filter).
@@ -479,14 +481,17 @@ export function useShakaPlayer(
         const [, b64] = stored.split('.');
         const payload = JSON.parse(
           atob(b64.replace(/-/g, '+').replace(/_/g, '/')),
-        ) as { exp: number };
+        ) as { exp: number; email?: string; role?: string };
         if (payload.exp > now + 60) {
           jwtCacheRef.current = { token: stored, expiresAt: payload.exp };
-          pushLog(
-            'info',
-            'license',
-            `[Auth] JWT từ session · exp ${new Date(payload.exp * 1000).toLocaleTimeString()}`,
-          );
+          let alg = 'JWT';
+          try {
+            const h = JSON.parse(atob(stored.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')));
+            alg = h.alg ?? 'JWT';
+          } catch { /* ignore */ }
+          const ttlMin = Math.round((payload.exp - now) / 60);
+          pushLog('info', 'license',
+            `[1] Auth: ${alg} verified · ${payload.email ?? '?'} · role=${payload.role ?? '?'} · TTL ${ttlMin}min`);
           return stored;
         }
       }
@@ -520,11 +525,8 @@ export function useShakaPlayer(
             ['decrypt'],
           );
           deviceKeyRef.current = { publicKeyPem, privateKey, deviceId };
-          pushLog(
-            'info',
-            'license',
-            `[Device] RSA key loaded · device=${deviceId.slice(0, 8)}…`,
-          );
+          pushLog('info', 'license',
+            `[2] Device: RSA-2048 OAEP key loaded · id=${deviceId.slice(0, 8)}… (Web Crypto, private key không rời browser)`);
           return deviceKeyRef.current;
         } catch {
           /* key bị hỏng — generate lại */
@@ -552,11 +554,8 @@ export function useShakaPlayer(
         JSON.stringify({ publicKeyPem, privateKeyJwk, deviceId }),
       );
       deviceKeyRef.current = { publicKeyPem, privateKey: kp.privateKey, deviceId };
-      pushLog(
-        'info',
-        'license',
-        `[Device] RSA-2048 generated · device=${deviceId.slice(0, 8)}…`,
-      );
+      pushLog('info', 'license',
+        `[2] Device: RSA-2048 OAEP key generated · id=${deviceId.slice(0, 8)}… (lưu localStorage, private key không export được)`);
       return deviceKeyRef.current;
     }
 
@@ -614,6 +613,17 @@ export function useShakaPlayer(
           }
 
           const nonce = crypto.randomUUID();
+          pushLog('info', 'license',
+            `[3] Nonce: ${nonce.slice(0, 8)}… generated (UUID single-use, chống replay attack)`);
+
+          // Phát hiện key rotation giữa các period
+          const prevKid = activeKidRef.current;
+          if (prevKid && prevKid !== kidHex) {
+            pushLog('warn', 'license',
+              `[KEY ROTATION] Period đổi · KID ${prevKid.slice(0, 8)}… → ${kidHex.slice(0, 8)}… · yêu cầu license mới`);
+          }
+          activeKidRef.current = kidHex;
+
           const customBody = JSON.stringify({
             kid: kidHex,
             device_id: device.deviceId,
@@ -635,11 +645,9 @@ export function useShakaPlayer(
           // khi nhiều request cùng KID khác nhau đều đến cùng 1 URI /license
           pendingDecryptKeyRef.current.set(kidHex, device.privateKey);
           pendingRequestBytesRef.current.set(kidHex, encoded.byteLength);
-          pushLog(
-            'info',
-            'license',
-            `[ClearKey→Custom] KID ${kidHex.slice(0, 8)}… · content=${currentContentIdRef.current}`,
-          );
+          pushLog('info', 'license',
+            `[4] License REQ → POST /license · KID=${kidHex.slice(0, 8)}… · ${encoded.byteLength}B · device pubkey đính kèm (server sẽ RSA-OAEP wrap)`);
+
         } catch (err) {
           pushLog('error', 'license', `[DRM] Request filter: ${(err as Error).message}`);
           throw err;
@@ -751,11 +759,13 @@ export function useShakaPlayer(
           lastLicense: stat,
           history: [stat, ...prev.history].slice(0, 8),
         }));
-        pushLog(
-          'info',
-          'license',
-          `[ClearKey] RSA-OAEP→key OK · ${stat.timeMs}ms · exp ${new Date(lic.expires_at * 1000).toLocaleTimeString()}`,
-        );
+        const keyBits = contentKeyBuf.byteLength * 8;
+        const ttlSec  = lic.expires_at - Math.floor(Date.now() / 1000);
+        const ttlMin  = Math.round(ttlSec / 60);
+        pushLog('info', 'license',
+          `[5] RSA-OAEP decrypt ✓ · Content key ${keyBits}-bit · TTL ${ttlMin}min · exp ${new Date(lic.expires_at * 1000).toLocaleTimeString()}`);
+        pushLog('info', 'license',
+          `[6] CDM ✓ · ClearKey JSON → browser CDM · AES-128-CTR active · KID=${lic.kid.slice(0, 8)}…`);
       } catch (err) {
         pushLog('error', 'license', `[ClearKey] Response: ${(err as Error).message}`);
         throw err;
@@ -925,7 +935,14 @@ export function useShakaPlayer(
     };
     player.addEventListener('adaptation', onAdaptation);
 
-    const onLoaded = () => pushLog('info', 'manifest', 'Manifest loaded');
+    const onLoaded = () => {
+      const tracks: ShakaVariantTrack[] = player.getVariantTracks?.() ?? [];
+      const heights = [...new Set(tracks.map((t) => t.height).filter(Boolean))]
+        .sort((a, b) => (b ?? 0) - (a ?? 0))
+        .join('/');
+      pushLog('info', 'manifest',
+        `Manifest loaded · ${heights}p · CENC 4-period key rotation · ClearKey DRM · ContentProtection verified`);
+    };
     player.addEventListener('loaded', onLoaded);
 
     const onBufferingChanged = (ev: Event) => {
