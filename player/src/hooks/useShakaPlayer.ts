@@ -314,6 +314,9 @@ export function useShakaPlayer(
   const rotationKidsRef = useRef<Set<string>>(new Set());
   // KID được log chi tiết [1]-[4] — chỉ response của KID này mới show [5][6].
   const primaryKidRef = useRef<string | null>(null);
+  // Gom các pre-fetch KID để log 1 dòng thay vì 3 dòng riêng.
+  const prefetchBatchRef = useRef<string[]>([]);
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ánh xạ license-uri → device private key đang chờ decrypt response.
   const pendingDecryptKeyRef = useRef<Map<string, CryptoKey>>(new Map());
   // content_id hiện tại (set khi load(), dùng trong license request filter).
@@ -791,11 +794,19 @@ export function useShakaPlayer(
           pushLog('info', 'license',
             `[KEY ROTATION ✓] Content key ${keyBits}-bit · KID=${lic.kid.slice(0, 8)}… · TTL ${ttlMin}min · AES-128-CTR active`);
         } else {
-          // Pre-fetch các period khác lúc startup — ghi gọn
+          // Pre-fetch — gom lại, log 1 dòng sau 300ms
           const periodIdx = ['915c46b4','4440f98f','f29da191','ecc458ee'].indexOf(lic.kid.slice(0, 8));
-          const periodNum = periodIdx >= 0 ? periodIdx + 1 : '?';
-          pushLog('info', 'license',
-            `(pre-fetch) Period ${periodNum} key ready · KID=${lic.kid.slice(0, 8)}…`);
+          const label = `P${periodIdx + 1}=${lic.kid.slice(0, 8)}…`;
+          prefetchBatchRef.current.push(label);
+          if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
+          prefetchTimerRef.current = setTimeout(() => {
+            const batch = prefetchBatchRef.current.splice(0);
+            if (batch.length > 0) {
+              pushLog('info', 'license',
+                `(pre-fetch) ${batch.length + 1}-period keys ready · ${batch.join(' · ')}`);
+            }
+            prefetchTimerRef.current = null;
+          }, 300);
         }
       } catch (err) {
         pushLog('error', 'license', `[ClearKey] Response: ${(err as Error).message}`);
@@ -987,7 +998,15 @@ export function useShakaPlayer(
     };
     player.addEventListener('buffering', onBufferingChanged);
 
-    // ---- Stats poll (1 Hz) — bandwidth, decoded/dropped frames -----------
+    // Mapping KID → period dựa trên license_keys.json
+    const KID_TO_PERIOD: Record<string, number> = {
+      '915c46b4': 1, '4440f98f': 2, 'f29da191': 3, 'ecc458ee': 4,
+    };
+    // Ranh giới thời gian từng period (giây)
+    const PERIOD_BOUNDARIES = [0, 1575, 3150, 4725, Infinity];
+    let activePeriodRef = 0; // period đang phát (0 = chưa xác định)
+
+    // ---- Stats poll (1 Hz) — bandwidth, decoded/dropped frames + period watch --
     const statsTimer = window.setInterval(() => {
       try {
         const s = player.getStats?.();
@@ -1000,6 +1019,24 @@ export function useShakaPlayer(
           decodedFrames: s.decodedFrames ?? prev.decodedFrames,
           droppedFrames: s.droppedFrames ?? prev.droppedFrames,
         }));
+
+        // Phát hiện period change dựa trên currentTime
+        if (videoRef.current && hasFirstLicenseRef.current) {
+          const t = videoRef.current.currentTime;
+          const newPeriod = PERIOD_BOUNDARIES.findIndex((b, i) =>
+            t >= b && t < PERIOD_BOUNDARIES[i + 1]
+          ) + 1;
+          if (newPeriod > 0 && newPeriod !== activePeriodRef) {
+            if (activePeriodRef > 0) {
+              // Đang phát và vừa chuyển period
+              const kidPrefix = Object.entries(KID_TO_PERIOD)
+                .find(([, p]) => p === newPeriod)?.[0] ?? '?';
+              pushLog('warn', 'license',
+                `[KEY ROTATION] Period ${activePeriodRef} → ${newPeriod} · KID=${kidPrefix}… · AES-128-CTR key đã được CDM chuyển (pre-fetched)`);
+            }
+            activePeriodRef = newPeriod;
+          }
+        }
       } catch {
         /* ignore — getStats có thể chưa sẵn lúc idle */
       }
@@ -1053,6 +1090,8 @@ export function useShakaPlayer(
       hasFirstLicenseRef.current = false;
       primaryKidRef.current = null;
       rotationKidsRef.current.clear();
+      prefetchBatchRef.current = [];
+      if (prefetchTimerRef.current) { clearTimeout(prefetchTimerRef.current); prefetchTimerRef.current = null; }
       setDrmInfo({
         ...EMPTY_DRM_INFO,
         keyIds: manifest.keyId ? [manifest.keyId] : [],

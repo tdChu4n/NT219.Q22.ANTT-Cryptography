@@ -43,6 +43,25 @@ export const MOVIES: Movie[] = [
     manifestId: 'local-movie-cenc-4period',
   },
 
+  // ── DEMO WATERMARK ────────────────────────────────────────────────────────
+  {
+    id: 'demo-watermark',
+    title: "The Internet's Own Boy · Watermark Demo",
+    year: 2014,
+    dur: '3:00',
+    genre: ['Tài liệu', 'Demo'],
+    director: 'Brian Knappenberger',
+    drm: true,
+    tint: 'tint-blue',
+    available: true,
+    synopsis: 'Clip 3 phút đầu với Forensic Watermark nhúng (DCT Koch-Zhao, user_id=demo_user). Dùng để demo phát hiện nguồn rò rỉ bằng watermark detection.',
+    quality: '1080p / 720p / 480p',
+    codec: 'H.264',
+    poster:   p(11),
+    backdrop: b(42),
+    manifestId: 'demo-watermark-cenc',
+  },
+
   // ── Tài liệu Bảo mật & Internet ──────────────────────────────────────────
   {
     id: 'citizenfour',
