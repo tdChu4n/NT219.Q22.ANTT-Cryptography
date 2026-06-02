@@ -44,9 +44,8 @@ async function migrate() {
         // --------------------------------------------------
         await db.createCollection('content_keys_enc').catch(() => {});
         await db.collection('content_keys_enc').createIndexes([
-            { key: { kid_hex:    1 }, name: 'idx_cke_kid_hex', unique: true },
-            // TTL index: tự xóa key đã hết hạn
-            { key: { expires_at: 1 }, name: 'idx_cke_ttl', expireAfterSeconds: 0 },
+            { key: { kid_hex: 1 }, name: 'idx_cke_kid_hex', unique: true },
+            // Không có TTL — content key là vĩnh cửu, chỉ xoá khi admin rotate
         ]);
         console.log('[✓] Collection "content_keys_enc" — indexes OK');
 
