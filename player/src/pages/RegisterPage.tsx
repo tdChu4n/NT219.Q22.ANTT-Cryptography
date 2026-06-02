@@ -182,7 +182,6 @@ export default function RegisterPage() {
 
               <Field label="Email" type="email" placeholder="you@example.com"
                 value={email} onChange={setEmail}
-                hint="Mã xác minh sẽ được gửi tới email này"
                 error={fieldErr['email']}
               />
 

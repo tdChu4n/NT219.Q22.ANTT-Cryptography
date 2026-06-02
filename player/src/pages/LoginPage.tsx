@@ -149,7 +149,6 @@ export default function LoginPage() {
               <Field label="Email" type="email"
                 placeholder="you@securestream.io"
                 value={email} onChange={setEmail}
-                hint="Tài khoản gắn với khoá DRM"
                 error={!!apiError}
               />
               <Field label="Mật khẩu" type="password"
@@ -174,7 +173,6 @@ export default function LoginPage() {
                   </span>
                   <span>Ghi nhớ thiết bị này 30 ngày</span>
                 </label>
-                <span className="mono auth-tiny">jwt · rs256 · 24h</span>
               </div>
 
               <button type="submit" className="btn btn-primary btn-block btn-xl" disabled={loading}>

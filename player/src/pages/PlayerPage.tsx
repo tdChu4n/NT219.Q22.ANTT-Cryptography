@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getMovieById, MOVIES } from '../data/movies';
 import { MOCK_MANIFESTS, type MockManifest } from '../mocks/manifests';
 import { useShakaPlayer } from '../hooks/useShakaPlayer';
+import { useAuth } from '../context/AuthContext';
 import VideoPlayer from '../components/VideoPlayer';
 import VideoControls from '../components/VideoControls';
 import QualityPanel from '../components/QualityPanel';
@@ -23,13 +24,13 @@ function SideSection({ title, icon, children }: { title: string; icon: string; c
 }
 
 export default function PlayerPage() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { id }     = useParams<{ id: string }>();
+  const navigate   = useNavigate();
+  const { user }   = useAuth();
   const m = getMovieById(id ?? '') ?? MOVIES[0]!;
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef                            = useRef<HTMLVideoElement>(null);
   const [activeManifest, setActiveManifest] = useState<MockManifest | null>(null);
-  const [showLog, setShowLog] = useState(false);
 
   const shaka = useShakaPlayer(videoRef);
 
@@ -47,7 +48,6 @@ export default function PlayerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manifest, activeManifest, shaka.status]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (shaka.status !== 'ready') return;
@@ -67,6 +67,15 @@ export default function PlayerPage() {
 
   const nextMovie = MOVIES.find(mv => mv.id !== m.id && mv.genre.some(g => m.genre.includes(g)));
 
+  const initials = (() => {
+    if (!user) return 'AN';
+    if (user.name) {
+      const parts = user.name.trim().split(' ');
+      return (parts[0]?.[0] ?? '') + (parts[parts.length - 1]?.[0] ?? '');
+    }
+    return user.email.slice(0, 2).toUpperCase();
+  })().toUpperCase();
+
   return (
     <div className="ss-root player-root">
       {/* Top bar */}
@@ -81,13 +90,7 @@ export default function PlayerPage() {
           {m.drm && <span className="badge drm"><Icon name="lock" size={10} stroke={2} />DRM</span>}
         </div>
         <div className="player-top-right">
-          <button
-            className={`btn btn-ghost ${showLog ? 'active' : ''}`}
-            onClick={() => setShowLog(s => !s)}
-          >
-            <Icon name="list" size={13} /> Event log {showLog ? 'ON' : 'OFF'}
-          </button>
-          <div className="ss-avatar">AN</div>
+          <div className="ss-avatar" title={user?.email}>{initials}</div>
         </div>
       </header>
 
@@ -214,10 +217,20 @@ export default function PlayerPage() {
               )}
             </SideSection>
           )}
-
-          {showLog && <LogPanel logs={shaka.logs} onClear={shaka.clearLogs} />}
         </aside>
       </div>
+
+      {/* Event log — toàn chiều rộng, luôn hiển thị ở dưới cùng */}
+      <section className="player-log-bar">
+        <div className="player-log-bar-head">
+          <Icon name="wave" size={13} />
+          <span className="mono">Security Event Log</span>
+          <span className="mono player-log-bar-count">{shaka.logs.length} sự kiện</span>
+        </div>
+        <div className="player-log-bar-body">
+          <LogPanel logs={shaka.logs} onClear={shaka.clearLogs} />
+        </div>
+      </section>
     </div>
   );
 }
