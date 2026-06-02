@@ -141,14 +141,20 @@ router.post('/rotate', async (req, res) => {
         report.keys_processed = 1;
     }
 
-    // 6. Kích hoạt Master Key mới trên toàn hệ thống
-    setMasterKey(NEW_MASTER_KEY);
+    // 6. Kích hoạt Master Key mới — chỉ khi TOÀN BỘ key re-encrypt thành công
+    if (report.keys_failed > 0) {
+        console.error(`[KMS] ❌ Rotation #${rotationId} bị hủy — ${report.keys_failed} key thất bại, master key KHÔNG được cập nhật`);
+        return res.status(500).json({
+            error: 'Rotation thất bại: một số key không re-encrypt được. Master Key KHÔNG thay đổi.',
+            ...report,
+        });
+    }
 
+    setMasterKey(NEW_MASTER_KEY);
     console.log(`[KMS] ✅ Master Key Rotation #${rotationId} — ${report.keys_processed} keys re-encrypted`);
 
     return res.status(200).json({
         message: 'Master Key Rotation hoàn thành',
-        new_master_key_hex: newMasterKeyHex, // In production: KHÔNG trả về — lưu vào HSM
         ...report,
     });
 });
