@@ -1,40 +1,85 @@
 services:
-  # 1. MongoDB lưu trữ Key ID và Content Key
+
+  # 1. MongoDB — lưu users, entitlements, content_keys_enc, sessions, audit
   db:
-    image: mongo:latest
-    container_name: multimedia-db
+    image: mongo:7
+    container_name: nt219-db
+    restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+      - ../database/seed_demo.js:/docker-entrypoint-initdb.d/seed_demo.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
-  # 2. Backend của Chuẩn (Xác thực & Cấp License)
+  # 2. License Server — xác thực JWT, cấp DRM license, KMS
   license-server:
     build:
       context: ../license-server
-    container_name: license-server
+    container_name: nt219-license-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"   # expose để dev/smoke-test gọi trực tiếp
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
-      - MONGO_URI=mongodb://db:27017
-      - DB_NAME=drm_platform
+      NODE_ENV:        ${NODE_ENV:-production}
+      PORT:            3000
+      MONGO_URI:       mongodb://db:27017
+      DB_NAME:         drm_platform
+      KMS_MASTER_KEY:  ${KMS_MASTER_KEY:-}
+      JWT_HS256_SECRET: ${JWT_HS256_SECRET:-}
+      ALLOWED_ORIGINS: "http://localhost:5173,http://localhost:4173,http://localhost:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
-  # 3. CDN/Web Server của Ân (Phân phối nội dung) — Task T1.6 hardened
+  # 3. CDN-SIM — Nginx phục vụ video segments (DASH), proxy /license
   cdn-sim:
     build:
       context: ../cdn-sim
-    container_name: cdn-sim
+    container_name: nt219-cdn-sim
+    restart: unless-stopped
     ports:
-      - "8080:80"     # HTTP (dev)
-      - "8443:443"    # HTTPS (chuẩn bị TLS — bật khi mount cert)
+      - "8080:80"    # HTTP (dev)
+      - "8443:443"   # HTTPS (khi mount cert)
+    depends_on:
+      license-server:
+        condition: service_healthy
     volumes:
-      # Ánh xạ folder ENCRYPTED output (T2.1+T2.3) vào Nginx.
-      # Lộc xuất manifest.mpd + manifest_rotation.mpd + các segment .m4s
-      # đã mã hoá AES-128-CTR vào media-processing/output/.
-      # (folder packager/output/ chứa output CLEAR cũ — KHÔNG dùng cho demo DRM)
       - ../media-processing/output:/usr/share/nginx/html/video:ro
-      # Thư mục cert TLS — đặt fullchain.pem + privkey.pem để kích hoạt HTTPS
       - ../cdn-sim/certs:/etc/nginx/certs:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # 4. Player — React SPA (build + nginx) với proxy /api, /license, /video
+  player:
+    build:
+      context: ../player
+    container_name: nt219-player
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      license-server:
+        condition: service_healthy
+      cdn-sim:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
 
 volumes:
   mongo-data:
