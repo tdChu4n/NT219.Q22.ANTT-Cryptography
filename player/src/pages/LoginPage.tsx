@@ -103,14 +103,7 @@ export default function LoginPage() {
         return;
       }
 
-      login(data.token, data.user);
-
-      if (!remember) {
-        // sessionStorage thay localStorage — xoá khi đóng tab
-        localStorage.removeItem('ss_token');
-        sessionStorage.setItem('ss_token', data.token);
-      }
-
+      login(data.token, data.user, remember);
       navigate(from, { replace: true });
     } catch {
       setApiError('Không kết nối được máy chủ. Hãy kiểm tra VM1.');

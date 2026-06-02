@@ -17,7 +17,7 @@ type AuthState = {
   token: string | null;
   user: AuthUser | null;
   isAuthenticated: boolean;
-  login: (token: string, user: AuthUser) => void;
+  login: (token: string, user: AuthUser, remember?: boolean) => void;
   logout: () => void;
 };
 
@@ -46,9 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
 
-  // Khôi phục session từ localStorage khi load lần đầu
+  // Khôi phục session: ưu tiên sessionStorage (tab session), sau đó localStorage (remember)
   useEffect(() => {
-    const stored = localStorage.getItem(TOKEN_KEY);
+    const stored = sessionStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY);
     if (stored && isTokenValid(stored)) {
       const payload = decodePayload(stored) as Record<string, string>;
       setToken(stored);
@@ -59,19 +59,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role:   payload['role']   ?? 'user',
       });
     } else if (stored) {
-      // Token hết hạn — dọn dẹp
+      // Token hết hạn — dọn dẹp cả hai storage
       localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
     }
   }, []);
 
-  const login = (newToken: string, newUser: AuthUser) => {
-    localStorage.setItem(TOKEN_KEY, newToken);
+  const login = (newToken: string, newUser: AuthUser, remember = true) => {
+    if (remember) {
+      localStorage.setItem(TOKEN_KEY, newToken);
+      sessionStorage.removeItem(TOKEN_KEY);
+    } else {
+      sessionStorage.setItem(TOKEN_KEY, newToken);
+      localStorage.removeItem(TOKEN_KEY);
+    }
     setToken(newToken);
     setUser(newUser);
   };
 
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
   };
@@ -91,8 +99,8 @@ export function useAuth(): AuthState {
   return ctx;
 }
 
-/** Lấy token hiện tại từ localStorage (dùng trong hook không có context). */
+/** Lấy token hiện tại từ storage (dùng trong hook không có context). */
 export function getStoredToken(): string | null {
-  const t = localStorage.getItem(TOKEN_KEY);
+  const t = sessionStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY);
   return t && isTokenValid(t) ? t : null;
 }
