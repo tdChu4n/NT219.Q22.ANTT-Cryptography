@@ -118,7 +118,7 @@ function hasNonce(nonce) {
  * @param {number} ttlSeconds - Thời hạn License (giây), mặc định 2 giờ
  * @returns {object} license object
  */
-function issueLicense(contentKeyHex, kidHex, ttlSeconds = 7200) {
+function issueLicense(contentKeyHex, kidHex, ttlSeconds = 1800) { // 30 phút thay vì 2h
     const now = Math.floor(Date.now() / 1000);
     return {
         kid_hex:     kidHex,

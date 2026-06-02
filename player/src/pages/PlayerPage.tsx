@@ -42,6 +42,16 @@ export default function PlayerPage() {
   const loadManifest = (mn: MockManifest) =>
     shaka.load(mn).then(() => setActiveManifest(mn));
 
+  // Unload chỉ khi m.id THAY ĐỔI sau lần mount đầu (tránh cắt ngang load ban đầu)
+  const prevIdRef = useRef(m.id);
+  useEffect(() => {
+    if (prevIdRef.current === m.id) return; // bỏ qua lần mount đầu
+    prevIdRef.current = m.id;
+    setActiveManifest(null);
+    void shaka.unload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [m.id]);
+
   useEffect(() => {
     if (!manifest || activeManifest || shaka.status !== 'idle') return;
     void loadManifest(manifest);

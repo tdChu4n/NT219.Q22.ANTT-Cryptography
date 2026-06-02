@@ -86,7 +86,7 @@ export default function HomePage() {
 
       <section className="hero">
         <div className="hero-bg">
-          <Backdrop movie={featured} label={`HERO · ${featured.id.toUpperCase()}`} />
+          <Backdrop movie={featured} />
           <div className="hero-bg-fade" />
         </div>
 

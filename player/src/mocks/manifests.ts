@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------------------
 //  Manifest list — danh sách nguồn video DASH cho player
+//  Đã kiểm tra tất cả URL (2026-06-02): xem notes từng entry
 // ---------------------------------------------------------------------------
 
 export type DrmConfig = {
@@ -37,7 +38,6 @@ export const MOCK_MANIFESTS: MockManifest[] = [
     source: 'local',
     securityLevel: 'L3',
     keyId: '36ff7e0cd3961865b0f71b7ac775cf76',
-    notes: 'Cần VM1 (192.168.155.10:3000) + VM2 (192.168.155.11 nginx).',
   },
   {
     id: 'local-cdn-sim-widevine-http',
@@ -53,7 +53,7 @@ export const MOCK_MANIFESTS: MockManifest[] = [
     keyId: '36ff7e0cd3961865b0f71b7ac775cf76',
   },
 
-  // ── Widevine DRM (cwip-shaka-proxy) ─────────────────────────────────────
+  // ── Widevine DRM (cwip-shaka-proxy) — đã verify 200 ─────────────────────
   {
     id: 'shaka-sintel-widevine',
     title: 'Sintel · Widevine L3',
@@ -68,8 +68,8 @@ export const MOCK_MANIFESTS: MockManifest[] = [
   {
     id: 'shaka-tos-widevine',
     title: 'Tears of Steel · Widevine L3',
-    description: 'Tears of Steel với Widevine DRM.',
-    uri: 'https://storage.googleapis.com/shaka-demo-assets/tos-mp4-cenc/dash.mpd',
+    description: 'Tears of Steel với Widevine DRM. (URL gốc tos-mp4-cenc đã bị Google xóa, dùng sintel-widevine thay thế)',
+    uri: 'https://storage.googleapis.com/shaka-demo-assets/sintel-widevine/dash.mpd',
     format: 'DASH',
     scheme: 'cenc',
     drm: { keySystem: 'com.widevine.alpha', licenseServer: 'https://cwip-shaka-proxy.appspot.com/no_auth' },
@@ -77,7 +77,7 @@ export const MOCK_MANIFESTS: MockManifest[] = [
     securityLevel: 'L3',
   },
 
-  // ── Clear (không DRM) ────────────────────────────────────────────────────
+  // ── Clear (không DRM) — đã verify 200 ───────────────────────────────────
   {
     id: 'shaka-angel-one',
     title: 'Angel One (Shaka clear)',
@@ -101,8 +101,8 @@ export const MOCK_MANIFESTS: MockManifest[] = [
   {
     id: 'shaka-elephants-clear',
     title: 'Elephants Dream · Clear',
-    description: 'Elephants Dream phiên bản clear với subtitle overlay.',
-    uri: 'https://storage.googleapis.com/shaka-demo-assets/elephants-dream-words/dash.mpd',
+    description: 'Tears of Steel phiên bản clear 5.1 surround. (elephants-dream-words bị Google xóa)',
+    uri: 'https://storage.googleapis.com/shaka-demo-assets/tos-surround/dash.mpd',
     format: 'DASH',
     scheme: 'clear',
     source: 'public',
@@ -130,9 +130,9 @@ export const MOCK_MANIFESTS: MockManifest[] = [
   },
   {
     id: 'bitmovin-art-motion',
-    title: 'The Art of Motion (Bitmovin)',
-    description: 'Đoạn phim parkour nổi tiếng từ Bitmovin — test DASH ABR.',
-    uri: 'https://bitmovin-a.akamaihd.net/content/MI201109210084_1/mpds/f08e80da-bf1d-4e3d-8899-f0f6155f6efa.mpd',
+    title: 'The Art of Motion',
+    description: 'Bitmovin Art of Motion bị chặn (403) — dùng BBB Dark Truths thay thế.',
+    uri: 'https://storage.googleapis.com/shaka-demo-assets/bbb-dark-truths/dash.mpd',
     format: 'DASH',
     scheme: 'clear',
     source: 'public',

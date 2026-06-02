@@ -36,7 +36,7 @@ export default function DetailPage() {
 
       <section className="detail-hero">
         <div className="detail-bg">
-          <Backdrop movie={m} label={`BACKDROP · ${m.title.toUpperCase()}`} />
+          <Backdrop movie={m} />
           <div className="detail-bg-fade" />
         </div>
 
@@ -51,7 +51,7 @@ export default function DetailPage() {
 
         <div className="detail-info">
           <div className="detail-poster">
-            <Poster movie={m} w={200} aspect="2/3" badge={false} title={false} label={`POSTER · ${m.id.toUpperCase()}`} />
+            <Poster movie={m} w={200} aspect="2/3" badge={false} title={false} />
           </div>
 
           <div className="detail-info-main">

@@ -17,17 +17,45 @@ const { verifyRS256 } = require('../auth/jwt');
 const { encryptKey }  = require('../crypto/rsa_oaep');
 const { consumeNonce, issueLicense } = require('../kms/kms');
 
-// Hàm tiện ích để lấy MongoDB db instance (sẽ được inject từ index.js)
+// ---------------------------------------------------------------
+// In-memory anomaly detection: phát hiện 1 user gửi từ nhiều IP
+// ---------------------------------------------------------------
+const _userIpMap = new Map(); // userId → { ips: Set, windowStart }
+
+function checkAnomaly(userId, clientIp) {
+    const now    = Date.now();
+    const window = 15 * 60 * 1000; // 15 phút
+
+    if (!_userIpMap.has(userId)) {
+        _userIpMap.set(userId, { ips: new Set([clientIp]), windowStart: now });
+        return null;
+    }
+    const rec = _userIpMap.get(userId);
+    if (now - rec.windowStart > window) {
+        rec.ips = new Set([clientIp]);
+        rec.windowStart = now;
+        return null;
+    }
+    rec.ips.add(clientIp);
+    if (rec.ips.size > 3)
+        return `Anomaly: user "${userId}" gửi license request từ ${rec.ips.size} IP trong 15 phút`;
+    return null;
+}
+
+// ---------------------------------------------------------------
 let _db = null;
 function setDb(db) { _db = db; }
 
+function getClientIp(req) {
+    return (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown')
+        .split(',')[0].trim();
+}
+
 // ---------------------------------------------------------------
 // POST /license
-// Body: { kid: string, device_id: string, device_public_key_pem: string, nonce: string, content_id: string }
-// Header: Authorization: Bearer <JWT RS256>
 // ---------------------------------------------------------------
 router.post('/', async (req, res) => {
-    // 1. Xác thực JWT (RS256 từ module T1.5)
+    // 1. Xác thực JWT
     const authHeader = req.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({ error: 'Unauthorized: Missing or malformed token' });
@@ -39,13 +67,39 @@ router.post('/', async (req, res) => {
         return res.status(401).json({ error: `Unauthorized: ${jwtError}` });
     }
 
-    // 2. Validate request body
-    const { kid, device_id, device_public_key_pem, nonce, content_id } = req.body;
-    if (!kid || !device_id || !device_public_key_pem || !nonce || !content_id) {
-        return res.status(400).json({ error: 'Bad Request: Thiếu kid, device_id, device_public_key_pem, nonce hoặc content_id' });
+    // 2. Anomaly detection — ghi log nếu phát hiện bất thường
+    const clientIp = getClientIp(req);
+    const anomaly  = checkAnomaly(decoded.userId, clientIp);
+    if (anomaly) {
+        console.warn(`[Security] ⚠️  ${anomaly} — IP hiện tại: ${clientIp}`);
+        // Ghi audit nếu có DB (không reject, chỉ cảnh báo)
+        if (_db) {
+            _db.collection('licenses_audit').insertOne({
+                event:     'ANOMALY_MULTI_IP',
+                user_id:   decoded.userId,
+                client_ip: clientIp,
+                detail:    anomaly,
+                created_at: new Date(),
+            }).catch(() => {});
+        }
     }
 
-    // 3. Chống Replay Attack — kiểm tra nonce
+    // 3. Validate request body (strict)
+    const { kid, device_id, device_public_key_pem, nonce, content_id } = req.body;
+    if (!kid || !device_id || !device_public_key_pem || !nonce || !content_id) {
+        return res.status(400).json({ error: 'Bad Request: Thiếu trường bắt buộc' });
+    }
+    if (typeof kid !== 'string' || kid.replace(/-/g, '').length !== 32) {
+        return res.status(400).json({ error: 'Bad Request: kid không hợp lệ' });
+    }
+    if (typeof nonce !== 'string' || nonce.length < 8 || nonce.length > 256) {
+        return res.status(400).json({ error: 'Bad Request: nonce không hợp lệ' });
+    }
+    if (!device_public_key_pem.includes('BEGIN PUBLIC KEY')) {
+        return res.status(400).json({ error: 'Bad Request: device_public_key_pem phải là PEM' });
+    }
+
+    // 4. Chống Replay Attack — kiểm tra nonce
     const nonceResult = consumeNonce(nonce);
     if (!nonceResult.ok) {
         return res.status(409).json({ error: `Conflict: ${nonceResult.error}` });
