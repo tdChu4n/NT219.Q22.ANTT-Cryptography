@@ -25,32 +25,32 @@ export type MockManifest = {
 };
 
 export const MOCK_MANIFESTS: MockManifest[] = [
-  // ── Local VM (DRM thật, ClearKey) ───────────────────────────────────────
+  // ── Local VM — Phim thật, CENC 4-period key rotation ────────────────────
   {
-    id: 'local-cdn-sim-widevine-https',
-    title: 'Local VM · ClearKey 4-period (Vite proxy)',
-    description: 'Manifest 4-period key rotation do shaka-packager sinh, phục vụ qua VM2 CDN nginx.',
-    uri: '/video/manifest.mpd',
+    id: 'local-movie-cenc-4period',
+    title: 'The Internet\'s Own Boy · CENC 4-period key rotation',
+    description: '4 period × ~26 phút, mỗi period dùng KID/Key khác nhau. 3 chất lượng: 1080p / 720p / 480p. ClearKey DRM qua license server NT219.',
+    uri: '/video/manifest_movie.mpd',
     format: 'DASH',
     scheme: 'cenc',
     drm: { keySystem: 'org.w3.clearkey', licenseServer: '/license' },
-    contentId: 'movie_123',
+    contentId: 'movie_aaronswartz',
     source: 'local',
     securityLevel: 'L3',
-    keyId: '36ff7e0cd3961865b0f71b7ac775cf76',
+    keyId: '915c46b4c759db1207fbfb0973327b3d',
   },
   {
-    id: 'local-cdn-sim-widevine-http',
-    title: 'Local VM · ClearKey (direct HTTP — debug)',
-    description: 'Trỏ trực tiếp vào VM2 CDN qua HTTP. Dùng khi debug CORS.',
-    uri: 'http://192.168.155.11/video/manifest.mpd',
+    id: 'local-movie-cenc-direct',
+    title: 'The Internet\'s Own Boy · direct HTTP (debug)',
+    description: 'Trỏ thẳng vào VM2 CDN qua HTTP — dùng khi debug CORS hoặc Vite proxy không hoạt động.',
+    uri: 'http://192.168.155.11/video/manifest_movie.mpd',
     format: 'DASH',
     scheme: 'cenc',
     drm: { keySystem: 'org.w3.clearkey', licenseServer: '/license' },
-    contentId: 'movie_123',
+    contentId: 'movie_aaronswartz',
     source: 'local',
     securityLevel: 'L3',
-    keyId: '36ff7e0cd3961865b0f71b7ac775cf76',
+    keyId: '915c46b4c759db1207fbfb0973327b3d',
   },
 
   // ── Widevine DRM (cwip-shaka-proxy) — đã verify 200 ─────────────────────
@@ -150,4 +150,4 @@ export const MOCK_MANIFESTS: MockManifest[] = [
   },
 ];
 
-export const DEFAULT_MANIFEST_ID = 'local-cdn-sim-widevine-https';
+export const DEFAULT_MANIFEST_ID = 'local-movie-cenc-4period';

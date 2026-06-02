@@ -52,20 +52,21 @@ async function seed() {
             const kidHex = k.KID.replace(/-/g, '').toLowerCase();
             const { key_enc_b64, iv_b64, auth_tag_b64 } = encryptContentKey(k.Key);
 
+            const contentId = k.content_id || 'movie_aaronswartz';
             await db.collection('content_keys_enc').updateOne(
                 { kid_hex: kidHex },
                 {
-                    $set: { kid_hex: kidHex, key_enc_b64, key_enc_iv_b64: iv_b64, auth_tag_b64, content_id: 'movie_123' },
+                    $set: { kid_hex: kidHex, key_enc_b64, key_enc_iv_b64: iv_b64, auth_tag_b64, content_id: contentId },
                     $setOnInsert: { created_at: new Date() },
                 },
                 { upsert: true },
             );
             const periodLabel = k.period ? ` (period ${k.period})` : '';
-            console.log(`[seed] content_keys_enc: KID=${kidHex.slice(0, 8)}…${periodLabel}`);
+            console.log(`[seed] content_keys_enc: KID=${kidHex.slice(0, 8)}…${periodLabel} → ${contentId}`);
 
             await db.collection('kids').updateOne(
                 { kid_hex: kidHex },
-                { $set: { kid_hex: kidHex, content_id: 'movie_123' }, $setOnInsert: { created_at: new Date() } },
+                { $set: { kid_hex: kidHex, content_id: contentId }, $setOnInsert: { created_at: new Date() } },
                 { upsert: true },
             );
         }
@@ -93,18 +94,20 @@ async function seed() {
         console.log(`[seed] users upsert: demo_user (email=demo@nt219.local, password=${DEMO_PASSWORD})`);
 
         // ----------------------------------------------------------------
-        // 3. Entitlement demo_user → movie_123
+        // 3. Entitlements demo_user
         // ----------------------------------------------------------------
         const expiresAt = new Date(Date.now() + 365 * 24 * 3600 * 1000);
-        await db.collection('entitlements').updateOne(
-            { user_id: 'demo_user', content_id: 'movie_123' },
-            {
-                $set: { user_id: 'demo_user', content_id: 'movie_123', expires_at: expiresAt },
-                $setOnInsert: { created_at: new Date() },
-            },
-            { upsert: true },
-        );
-        console.log(`[seed] entitlements: demo_user → movie_123 (exp ${expiresAt.toISOString()})`);
+        for (const cid of ['movie_aaronswartz', 'movie_123']) {
+            await db.collection('entitlements').updateOne(
+                { user_id: 'demo_user', content_id: cid },
+                {
+                    $set: { user_id: 'demo_user', content_id: cid, expires_at: expiresAt },
+                    $setOnInsert: { created_at: new Date() },
+                },
+                { upsert: true },
+            );
+            console.log(`[seed] entitlements: demo_user → ${cid} (exp ${expiresAt.toISOString()})`);
+        }
 
         console.log(`\n[seed] ✅ Hoàn thành! ${keys.length} content key(s). Tài khoản demo: demo@nt219.local / ${DEMO_PASSWORD}`);
     } catch (err) {
