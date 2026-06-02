@@ -1,4 +1,6 @@
 import os
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 def xor_bytes(b1, b2):

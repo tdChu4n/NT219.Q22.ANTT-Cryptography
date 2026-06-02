@@ -70,7 +70,7 @@ async function loginAndGetToken(app, username = 'test_user') {
 
 function makeLicenseBody(overrides = {}) {
     return {
-        kid:                   '19d57c645156a5a0ddd23849e6377665',
+        kid:                   '915c46b4c759db1207fbfb0973327b3d', // Period 1 KID — movie_aaronswartz
         device_id:             'device_test_001',
         device_public_key_pem: deviceKeys.publicKey,
         nonce:                 makeNonce(),
@@ -155,7 +155,7 @@ describe('POST /api/license — Happy Path', () => {
         expect(recovered).toMatch(/^[0-9a-f]{32}$/); // AES-128 = 32 hex chars
     });
 
-    test('expires_at = issued_at + 7200s (2 giờ TTL)', async () => {
+    test('expires_at = issued_at + 1800s (30 phút TTL)', async () => {
         const res = await request(app)
             .post('/api/license')
             .set('Authorization', `Bearer ${token}`)
@@ -163,7 +163,7 @@ describe('POST /api/license — Happy Path', () => {
 
         expect(res.status).toBe(200);
         const diff = res.body.expires_at - res.body.issued_at;
-        expect(diff).toBe(7200);
+        expect(diff).toBe(1800);
     });
 });
 
@@ -243,7 +243,7 @@ describe('POST /api/license — Body validation', () => {
             .set('Authorization', `Bearer ${token}`)
             .send(makeLicenseBody({ device_public_key_pem: 'not-a-valid-pem' }));
         expect(res.status).toBe(400);
-        expect(res.body.error).toMatch(/rsa error/i);
+        expect(res.body.error).toMatch(/pem/i);
     });
 });
 
