@@ -10,6 +10,7 @@ import QualityPanel from '../components/QualityPanel';
 import LogPanel from '../components/LogPanel';
 import { Icon } from '../components/Icon';
 import { Poster } from '../components/Poster';
+import { UserMenu } from '../components/UserMenu';
 
 function SideSection({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
   return (
@@ -26,7 +27,7 @@ function SideSection({ title, icon, children }: { title: string; icon: string; c
 export default function PlayerPage() {
   const { id }     = useParams<{ id: string }>();
   const navigate   = useNavigate();
-  const { user }   = useAuth();
+  useAuth();
   const m = getMovieById(id ?? '') ?? MOVIES[0]!;
 
   // Phim chưa khả dụng → redirect về detail page
@@ -84,15 +85,6 @@ export default function PlayerPage() {
 
   const nextMovie = MOVIES.find(mv => mv.id !== m.id && mv.genre.some(g => m.genre.includes(g)));
 
-  const initials = (() => {
-    if (!user) return 'AN';
-    if (user.name) {
-      const parts = user.name.trim().split(' ');
-      return (parts[0]?.[0] ?? '') + (parts[parts.length - 1]?.[0] ?? '');
-    }
-    return user.email.slice(0, 2).toUpperCase();
-  })().toUpperCase();
-
   return (
     <div className="ss-root player-root">
       {/* Top bar */}
@@ -107,7 +99,7 @@ export default function PlayerPage() {
           {m.drm && <span className="badge drm"><Icon name="lock" size={10} stroke={2} />DRM</span>}
         </div>
         <div className="player-top-right">
-          <div className="ss-avatar" title={user?.email}>{initials}</div>
+          <UserMenu />
         </div>
       </header>
 
