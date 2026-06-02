@@ -29,6 +29,13 @@ export default function PlayerPage() {
   const { user }   = useAuth();
   const m = getMovieById(id ?? '') ?? MOVIES[0]!;
 
+  // Phim chưa khả dụng → redirect về detail page
+  useEffect(() => {
+    if (!m.available) {
+      navigate(`/movies/${m.id}`, { replace: true });
+    }
+  }, [m, navigate]);
+
   const videoRef                            = useRef<HTMLVideoElement>(null);
   const [activeManifest, setActiveManifest] = useState<MockManifest | null>(null);
 

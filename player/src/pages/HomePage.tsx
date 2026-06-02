@@ -7,34 +7,28 @@ import { Icon } from '../components/Icon';
 
 const RAILS = [
   {
-    id: 'featured',
-    title: 'Đề xuất cho bạn',
-    sub: 'Dựa trên lượt xem gần đây',
-    ids: ['sintel', 'tos', 'bien-gioi', 'motion', 'spring', 'bbb'],
-  },
-  {
     id: 'drm',
-    title: 'Nội dung được bảo vệ DRM',
-    sub: 'AES-128-CTR · ClearKey · Widevine',
-    ids: ['bbb', 'sintel', 'tos', 'spring', 'bien-gioi'],
+    title: 'Tài liệu Bảo mật & Internet',
+    sub: 'DRM · AES-128-CTR · ClearKey',
+    ids: ['aaronswartz', 'citizenfour', 'zero-days', 'we-are-legion', 'snowden', 'deep-web'],
   },
   {
-    id: 'free',
-    title: 'Xem miễn phí — Không cần tài khoản',
-    sub: 'Clear · Không mã hoá',
-    ids: ['motion', 'uke', 'ed', 'cosmos', 'caminandes', 'khoang-lanh', 'sintel-free', 'bbb-dark'],
+    id: 'cinema',
+    title: 'Điện ảnh Hacker & Công nghệ',
+    sub: 'Các tác phẩm điện ảnh kinh điển về thế giới số',
+    ids: ['mr-robot', 'social-network', 'matrix', 'hackers', 'wargames', 'ex-machina'],
   },
   {
     id: 'new',
     title: 'Mới thêm gần đây',
-    sub: '5 phim · cập nhật tuần này',
-    ids: ['bien-gioi', 'bbb-dark', 'sintel-free', 'khoang-lanh', 'motion'],
+    sub: 'Cập nhật tuần này',
+    ids: ['aaronswartz', 'citizenfour', 'zero-days', 'snowden', 'mr-robot'],
   },
   {
-    id: 'animation',
-    title: 'Hoạt hình & Ngắn',
-    sub: 'Blender Open Movies',
-    ids: ['bbb', 'ed', 'caminandes', 'cosmos', 'spring', 'bbb-dark'],
+    id: 'classic',
+    title: 'Hacker Cổ điển',
+    sub: 'Những bộ phim định hình văn hóa hacker',
+    ids: ['wargames', 'hackers', 'matrix', 'mr-robot', 'social-network'],
   },
 ];
 
@@ -62,13 +56,7 @@ function Rail({ title, sub, ids, onCard }: RailProps) {
         {movies.map((m, i) => (
           <div className="rail-card" key={i} onClick={() => onCard(m.id)}>
             <Poster movie={m} w={180} aspect="2/3" />
-            <div className="rail-card-meta mono">
-              <span>{m.year}</span>
-              <span>·</span>
-              <span>{m.dur}</span>
-              <span>·</span>
-              <span>{m.quality}</span>
-            </div>
+            <div className="rail-card-name">{m.title}</div>
           </div>
         ))}
       </div>
@@ -102,7 +90,7 @@ export default function HomePage() {
               )}
               <span className="badge dot">{featured.year}</span>
               <span className="badge dot">{featured.dur}</span>
-              <span className="badge dot">{featured.quality} · {featured.codec}</span>
+              <span className="badge dot">{featured.quality}</span>
               {featured.genre.slice(0, 1).map(g => (
                 <span key={g} className="badge dot">{g}</span>
               ))}

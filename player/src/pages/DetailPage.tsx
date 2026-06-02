@@ -89,12 +89,18 @@ export default function DetailPage() {
             <p className="detail-syn">{m.synopsis}</p>
 
             <div className="detail-actions">
-              <button
-                className="btn btn-primary btn-xl"
-                onClick={() => navigate(`/watch/${m.id}`)}
-              >
-                <Icon name="play" size={15} /> Phát ngay
-              </button>
+              {m.available ? (
+                <button
+                  className="btn btn-primary btn-xl"
+                  onClick={() => navigate(`/watch/${m.id}`)}
+                >
+                  <Icon name="play" size={15} /> Phát ngay
+                </button>
+              ) : (
+                <button className="btn btn-secondary btn-xl" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+                  <Icon name="lock" size={15} stroke={2} /> Sắp ra mắt
+                </button>
+              )}
               <button className="btn btn-secondary">
                 <Icon name="film" size={14} /> Xem trailer
               </button>
@@ -129,12 +135,18 @@ export default function DetailPage() {
               <div className="play-bar">
                 <div className="play-bar-fill" style={{ width: '0%' }} />
               </div>
-              <button
-                className="btn btn-accent btn-block"
-                onClick={() => navigate(`/watch/${m.id}`)}
-              >
-                <Icon name="play" size={13} /> Xem ngay
-              </button>
+              {m.available ? (
+                <button
+                  className="btn btn-accent btn-block"
+                  onClick={() => navigate(`/watch/${m.id}`)}
+                >
+                  <Icon name="play" size={13} /> Xem ngay
+                </button>
+              ) : (
+                <button className="btn btn-secondary btn-block" disabled style={{ opacity: 0.5 }}>
+                  Sắp ra mắt
+                </button>
+              )}
             </div>
           </aside>
         </div>
