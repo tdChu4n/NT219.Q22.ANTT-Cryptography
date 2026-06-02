@@ -1147,6 +1147,8 @@ export function useShakaPlayer(
       player.configure({ abr: { enabled: false } });
       setAbrEnabled(false);
       player.selectVariantTrack(track, /* clearBuffer */ true);
+      // Cập nhật UI ngay — không chờ adaptation event (chỉ fire sau khi re-buffer xong)
+      setTracks((prev) => prev.map((t) => ({ ...t, active: t.id === trackId })));
       pushLog(
         'info',
         'adaptation',
