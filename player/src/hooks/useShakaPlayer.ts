@@ -308,6 +308,9 @@ export function useShakaPlayer(
   } | null>(null);
   // Track KID đang active để phát hiện key rotation giữa các period.
   const activeKidRef = useRef<string | null>(null);
+  // True sau khi license đầu tiên thành công — dùng để phân biệt
+  // pre-fetch ban đầu (4 KID cùng lúc) với rotation thật khi đang phát.
+  const hasFirstLicenseRef = useRef(false);
   // Ánh xạ license-uri → device private key đang chờ decrypt response.
   const pendingDecryptKeyRef = useRef<Map<string, CryptoKey>>(new Map());
   // content_id hiện tại (set khi load(), dùng trong license request filter).
@@ -616,9 +619,9 @@ export function useShakaPlayer(
           pushLog('info', 'license',
             `[3] Nonce: ${nonce.slice(0, 8)}… generated (UUID single-use, chống replay attack)`);
 
-          // Phát hiện key rotation giữa các period
+          // Key rotation chỉ log khi đã có license trước đó (không phải pre-fetch)
           const prevKid = activeKidRef.current;
-          if (prevKid && prevKid !== kidHex) {
+          if (prevKid && prevKid !== kidHex && hasFirstLicenseRef.current) {
             pushLog('warn', 'license',
               `[KEY ROTATION] Period đổi · KID ${prevKid.slice(0, 8)}… → ${kidHex.slice(0, 8)}… · yêu cầu license mới`);
           }
@@ -762,10 +765,18 @@ export function useShakaPlayer(
         const keyBits = contentKeyBuf.byteLength * 8;
         const ttlSec  = lic.expires_at - Math.floor(Date.now() / 1000);
         const ttlMin  = Math.round(ttlSec / 60);
-        pushLog('info', 'license',
-          `[5] RSA-OAEP decrypt ✓ · Content key ${keyBits}-bit · TTL ${ttlMin}min · exp ${new Date(lic.expires_at * 1000).toLocaleTimeString()}`);
-        pushLog('info', 'license',
-          `[6] CDM ✓ · ClearKey JSON → browser CDM · AES-128-CTR active · KID=${lic.kid.slice(0, 8)}…`);
+        if (!hasFirstLicenseRef.current) {
+          // License đầu tiên — đây là lúc phim bắt đầu phát được
+          hasFirstLicenseRef.current = true;
+          pushLog('info', 'license',
+            `[5] RSA-OAEP decrypt ✓ · Content key ${keyBits}-bit · TTL ${ttlMin}min · exp ${new Date(lic.expires_at * 1000).toLocaleTimeString()}`);
+          pushLog('info', 'license',
+            `[6] CDM ✓ · ClearKey JSON → browser CDM · AES-128-CTR active · KID=${lic.kid.slice(0, 8)}…`);
+        } else {
+          // License cho period tiếp theo (key rotation)
+          pushLog('info', 'license',
+            `[KEY ROTATION ✓] Content key ${keyBits}-bit mới · KID=${lic.kid.slice(0, 8)}… · TTL ${ttlMin}min · AES-128-CTR active`);
+        }
       } catch (err) {
         pushLog('error', 'license', `[ClearKey] Response: ${(err as Error).message}`);
         throw err;
@@ -1017,6 +1028,9 @@ export function useShakaPlayer(
       setStatus('loading');
       setError(null);
       setTracks([]);
+      setLogs([]);
+      activeKidRef.current = null;
+      hasFirstLicenseRef.current = false;
       setDrmInfo({
         ...EMPTY_DRM_INFO,
         keyIds: manifest.keyId ? [manifest.keyId] : [],
