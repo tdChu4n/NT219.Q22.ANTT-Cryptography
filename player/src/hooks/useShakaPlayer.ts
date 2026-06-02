@@ -631,8 +631,10 @@ export function useShakaPlayer(
           };
           request.body = encoded.buffer;
 
-          pendingDecryptKeyRef.current.set(uri || '<unknown>', device.privateKey);
-          pendingRequestBytesRef.current.set(uri || '<unknown>', encoded.byteLength);
+          // Dùng kidHex làm key (không dùng uri) để tránh race condition
+          // khi nhiều request cùng KID khác nhau đều đến cùng 1 URI /license
+          pendingDecryptKeyRef.current.set(kidHex, device.privateKey);
+          pendingRequestBytesRef.current.set(kidHex, encoded.byteLength);
           pushLog(
             'info',
             'license',
@@ -659,11 +661,24 @@ export function useShakaPlayer(
     const onLicenseResponse = async (type: number, response: any): Promise<void> => {
       if (type !== RequestType.LICENSE) return;
       const uri = response.uri ?? response.originalUri ?? '<unknown>';
-      const privateKey = pendingDecryptKeyRef.current.get(uri);
-      const requestBytes = pendingRequestBytesRef.current.get(uri) ?? 0;
-      pendingRequestBytesRef.current.delete(uri);
 
-      if (!privateKey) {
+      // Parse JSON trước để lấy KID — dùng KID làm key lookup thay vì URI
+      // (tránh race condition khi nhiều request đến cùng endpoint /license)
+      let lic: { kid: string; encrypted_key: string; issued_at: number; expires_at: number; error?: string } | null = null;
+      if (isInternalUri(uri)) {
+        try {
+          const txt = new TextDecoder().decode(response.data as ArrayBuffer);
+          const parsed = JSON.parse(txt);
+          if (parsed.encrypted_key) lic = parsed;
+        } catch { /* không phải JSON custom — bỏ qua */ }
+      }
+
+      const lookupKey = lic?.kid ?? uri;
+      const privateKey = pendingDecryptKeyRef.current.get(lookupKey);
+      const requestBytes = pendingRequestBytesRef.current.get(lookupKey) ?? 0;
+      pendingRequestBytesRef.current.delete(lookupKey);
+
+      if (!privateKey || !lic) {
         // Public proxy hoặc Widevine binary — ghi stat bình thường.
         const stat: DrmRequestStat = {
           ts: Date.now(),
@@ -688,16 +703,7 @@ export function useShakaPlayer(
       }
 
       // Custom license server response: RSA-OAEP decrypt → ClearKey response.
-      pendingDecryptKeyRef.current.delete(uri);
       try {
-        const jsonText = new TextDecoder().decode(response.data as ArrayBuffer);
-        const lic = JSON.parse(jsonText) as {
-          kid: string;
-          encrypted_key: string;
-          issued_at: number;
-          expires_at: number;
-          error?: string;
-        };
         if (lic.error) throw new Error(lic.error);
 
         const encBytes = Uint8Array.from(atob(lic.encrypted_key), (c) =>
