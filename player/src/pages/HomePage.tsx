@@ -7,28 +7,34 @@ import { Icon } from '../components/Icon';
 
 const RAILS = [
   {
-    id: 'drm',
-    title: 'Tài liệu Bảo mật & Internet',
-    sub: 'DRM · AES-128-CTR · ClearKey',
-    ids: ['aaronswartz', 'citizenfour', 'zero-days', 'we-are-legion', 'snowden', 'deep-web'],
-  },
-  {
-    id: 'cinema',
-    title: 'Điện ảnh Hacker & Công nghệ',
-    sub: 'Các tác phẩm điện ảnh kinh điển về thế giới số',
-    ids: ['mr-robot', 'social-network', 'matrix', 'hackers', 'wargames', 'ex-machina'],
+    id: 'trending',
+    title: 'Đang thịnh hành',
+    sub: 'Xem nhiều nhất tuần này',
+    ids: ['aaronswartz', 'citizenfour', 'mr-robot', 'zero-days', 'matrix', 'snowden'],
   },
   {
     id: 'new',
     title: 'Mới thêm gần đây',
     sub: 'Cập nhật tuần này',
-    ids: ['aaronswartz', 'citizenfour', 'zero-days', 'snowden', 'mr-robot'],
+    ids: ['aaronswartz', 'citizenfour', 'zero-days', 'snowden', 'deep-web'],
+  },
+  {
+    id: 'documentary',
+    title: 'Phim tài liệu',
+    sub: 'Câu chuyện thật · Nhân vật thật',
+    ids: ['citizenfour', 'zero-days', 'we-are-legion', 'snowden', 'deep-web', 'aaronswartz'],
+  },
+  {
+    id: 'cinema',
+    title: 'Phim điện ảnh',
+    sub: 'Điện ảnh về công nghệ & thế giới số',
+    ids: ['matrix', 'social-network', 'ex-machina', 'mr-robot', 'hackers', 'wargames'],
   },
   {
     id: 'classic',
-    title: 'Hacker Cổ điển',
-    sub: 'Những bộ phim định hình văn hóa hacker',
-    ids: ['wargames', 'hackers', 'matrix', 'mr-robot', 'social-network'],
+    title: 'Phim kinh điển',
+    sub: 'Những tác phẩm vượt thời gian',
+    ids: ['wargames', 'hackers', 'matrix', 'social-network', 'ex-machina'],
   },
 ];
 
@@ -55,8 +61,7 @@ function Rail({ title, sub, ids, onCard }: RailProps) {
       <div className="rail-track">
         {movies.map((m, i) => (
           <div className="rail-card" key={i} onClick={() => onCard(m.id)}>
-            <Poster movie={m} w={180} aspect="2/3" />
-            <div className="rail-card-name">{m.title}</div>
+            <Poster movie={m} w={180} aspect="2/3" title={true} />
           </div>
         ))}
       </div>
