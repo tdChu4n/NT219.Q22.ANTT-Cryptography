@@ -89,6 +89,7 @@ log("✅ KẾT LUẬN: Request 1 thành công (HTTP 200). Request 2 bị chặn 
 log("==================================================")
 
 # Ghi đè log vào file cũ
-with open("poc/e5_replay_log.txt", "w", encoding="utf-8") as f:
+log_path = os.path.join(os.path.dirname(__file__), "e5_replay_log.txt")
+with open(log_path, "w", encoding="utf-8") as f:
     f.write("\n".join(log_output))
 print("\n[!] Đã lưu file log chứng minh mới vào: poc/e5_replay_log.txt")
