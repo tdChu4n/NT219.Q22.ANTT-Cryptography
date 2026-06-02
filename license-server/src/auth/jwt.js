@@ -51,8 +51,14 @@ function ensureRSAKeys() {
 
 ensureRSAKeys();
 
-const RS256_PRIVATE_KEY = fs.readFileSync(RS256_PRIV_PATH, 'utf8');
-const RS256_PUBLIC_KEY  = fs.readFileSync(RS256_PUB_PATH,  'utf8');
+let RS256_PRIVATE_KEY, RS256_PUBLIC_KEY;
+try {
+    RS256_PRIVATE_KEY = fs.readFileSync(RS256_PRIV_PATH, 'utf8');
+    RS256_PUBLIC_KEY  = fs.readFileSync(RS256_PUB_PATH,  'utf8');
+} catch (err) {
+    console.error('[jwt] FATAL: Không đọc được RSA key files:', err.message);
+    process.exit(1);
+}
 
 // ------------------------------------------------------------------
 // HS256 — HMAC-SHA256 (Shared Secret)
