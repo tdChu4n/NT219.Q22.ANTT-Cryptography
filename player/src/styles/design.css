@@ -35,6 +35,101 @@
   --shadow:      0 4px 18px rgba(0, 0, 0, 0.35);
 }
 
+/* ---- Light mode tokens ---- */
+[data-theme="light"] .ss-root {
+  --bg:          #f4f4f8;
+  --bg-1:        #ffffff;
+  --bg-2:        #ebebf2;
+  --bg-3:        #dcdce8;
+  --line:        rgba(0, 0, 0, 0.08);
+  --line-strong: rgba(0, 0, 0, 0.15);
+  --fg:          #17171f;
+  --fg-1:        #38384e;
+  --fg-2:        #68687c;
+  --fg-3:        #98989c;
+  --accent:      #3b6ff0;
+  --accent-soft: rgba(59, 111, 240, 0.12);
+  --accent-line: rgba(59, 111, 240, 0.35);
+  --ok:          #16a34a;
+  --warn:        #ca8a04;
+  --danger:      #dc2626;
+  --shield:      #3b6ff0;
+
+  --bg-elev:     var(--bg-1);
+  --bg-elev-2:   var(--bg-2);
+  --border:      var(--line-strong);
+  --fg-muted:    var(--fg-2);
+  --shadow:      0 4px 18px rgba(0, 0, 0, 0.10);
+}
+
+[data-theme="light"] body {
+  background: #f4f4f8;
+}
+
+/* Header light */
+[data-theme="light"] .ss-header {
+  background: linear-gradient(180deg, rgba(244,244,248,0.95) 0%, rgba(244,244,248,0) 100%);
+}
+[data-theme="light"] .ss-header.solid {
+  background: #f4f4f8;
+  border-bottom-color: rgba(0,0,0,0.08);
+}
+[data-theme="light"] .ss-search {
+  background: #fff;
+  border-color: rgba(0,0,0,0.12);
+}
+[data-theme="light"] .ss-nav a { color: var(--fg-2); }
+[data-theme="light"] .ss-nav a.active { color: var(--fg); background: var(--bg-2); }
+
+/* Poster / backdrop light */
+[data-theme="light"] .poster        { border-color: rgba(0,0,0,0.10); }
+[data-theme="light"] .poster-label  { background: rgba(244,244,248,0.85); color: var(--fg-2); }
+[data-theme="light"] .poster-hex    { color: rgba(59, 111, 240, 0.10); }
+[data-theme="light"] .backdrop-label { border-color: rgba(0,0,0,0.15); color: var(--fg-3); }
+
+/* Tint overrides for light mode — giữ màu nhưng nhạt hơn */
+[data-theme="light"] .tint-blue   { background: linear-gradient(135deg, #d0ddf8 0%, #f4f4f8 80%); }
+[data-theme="light"] .tint-violet { background: linear-gradient(135deg, #ddd0f8 0%, #f4f4f8 80%); }
+[data-theme="light"] .tint-teal   { background: linear-gradient(135deg, #c0e8ee 0%, #f4f4f8 80%); }
+[data-theme="light"] .tint-amber  { background: linear-gradient(135deg, #f8e8c0 0%, #f4f4f8 80%); }
+[data-theme="light"] .tint-rose   { background: linear-gradient(135deg, #f8d0d8 0%, #f4f4f8 80%); }
+[data-theme="light"] .tint-green  { background: linear-gradient(135deg, #c8ecd4 0%, #f4f4f8 80%); }
+[data-theme="light"] .tint-steel  { background: linear-gradient(135deg, #d0dce8 0%, #f4f4f8 80%); }
+
+/* Hero gradient light */
+[data-theme="light"] .hero-bg-fade {
+  background:
+    linear-gradient(180deg, rgba(244,244,248,0.55) 0%, rgba(244,244,248,0) 30%, rgba(244,244,248,0.85) 75%, #f4f4f8 100%),
+    linear-gradient(90deg, rgba(244,244,248,0.9) 0%, rgba(244,244,248,0.4) 60%, rgba(244,244,248,0) 100%);
+}
+[data-theme="light"] .detail-bg-fade {
+  background: linear-gradient(180deg, rgba(244,244,248,0.4) 0%, rgba(244,244,248,0) 25%, rgba(244,244,248,0.5) 55%, #f4f4f8 92%);
+}
+
+/* Auth light */
+[data-theme="light"] .auth-bg    { background: #f4f4f8; }
+[data-theme="light"] .auth-form  { background: #fff; box-shadow: 0 14px 60px rgba(0,0,0,0.08); }
+[data-theme="light"] .auth-error { background: rgba(220,38,38,0.08); border-color: rgba(220,38,38,0.25); color: #b91c1c; }
+[data-theme="light"] .field-input input { background: #f8f8fc; border-color: rgba(0,0,0,0.12); }
+
+/* Dropdown light */
+[data-theme="light"] .ss-user-dropdown { background: #fff; border-color: rgba(0,0,0,0.12); box-shadow: 0 8px 32px rgba(0,0,0,0.12); }
+[data-theme="light"] .ss-user-item:hover { background: var(--bg-2); }
+
+/* Buttons light */
+[data-theme="light"] .btn-secondary { background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.15); }
+[data-theme="light"] .btn-secondary:hover { background: rgba(0,0,0,0.10); }
+[data-theme="light"] .btn-ghost { background: transparent; border-color: rgba(0,0,0,0.12); }
+[data-theme="light"] .btn-ghost:hover { background: var(--bg-2); }
+[data-theme="light"] .btn-icon { background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.10); }
+[data-theme="light"] .btn-icon:hover { background: rgba(0,0,0,0.10); }
+
+/* Sidebar player light */
+[data-theme="light"] .player-top  { background: #fff; border-bottom-color: rgba(0,0,0,0.08); }
+[data-theme="light"] .player-side { background: #f8f8fc; border-left-color: rgba(0,0,0,0.08); }
+[data-theme="light"] .sd-sec      { background: #fff; border-color: rgba(0,0,0,0.08); }
+[data-theme="light"] .sd-head     { background: #f4f4f8; border-bottom-color: rgba(0,0,0,0.08); }
+
 /* ---- Root shell ---- */
 .ss-root {
   font-family: 'Manrope', -apple-system, sans-serif;

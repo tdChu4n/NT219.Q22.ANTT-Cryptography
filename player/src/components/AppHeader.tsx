@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { Icon } from './Icon';
 
 type AppHeaderProps = {
@@ -7,9 +8,10 @@ type AppHeaderProps = {
 };
 
 export const AppHeader = ({ solid = false }: AppHeaderProps) => {
-  const { pathname }               = useLocation();
-  const navigate                   = useNavigate();
-  const { isAuthenticated, user, logout } = useAuth();
+  const { pathname }                       = useLocation();
+  const navigate                           = useNavigate();
+  const { isAuthenticated, user, logout }  = useAuth();
+  const { theme, toggleTheme }             = useTheme();
 
   const active = pathname === '/' ? 'home' : pathname.startsWith('/library') ? 'library' : '';
 
@@ -18,7 +20,6 @@ export const AppHeader = ({ solid = false }: AppHeaderProps) => {
     navigate('/login', { replace: true });
   };
 
-  // Lấy 2 chữ cái đầu của tên hoặc email để hiển thị avatar
   const initials = (() => {
     if (!user) return 'AN';
     if (user.name) {
@@ -48,13 +49,22 @@ export const AppHeader = ({ solid = false }: AppHeaderProps) => {
         <kbd>⌘K</kbd>
       </div>
 
+      {/* Nút chuyển dark / light */}
+      <button
+        className="btn-icon"
+        onClick={toggleTheme}
+        title={theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}
+        style={{ transition: 'transform .3s' }}
+      >
+        <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} />
+      </button>
+
       {isAuthenticated ? (
         <>
           <button className="btn-icon" title="Thông báo">
             <Icon name="bell" size={14} />
           </button>
 
-          {/* Avatar + menu logout */}
           <div className="ss-user-menu">
             <div className="ss-avatar" title={user?.email}>{initials}</div>
             <div className="ss-user-dropdown">
