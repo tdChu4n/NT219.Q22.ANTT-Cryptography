@@ -308,9 +308,12 @@ export function useShakaPlayer(
   } | null>(null);
   // Track KID đang active để phát hiện key rotation giữa các period.
   const activeKidRef = useRef<string | null>(null);
-  // True sau khi license đầu tiên thành công — dùng để phân biệt
-  // pre-fetch ban đầu (4 KID cùng lúc) với rotation thật khi đang phát.
+  // True sau khi license đầu tiên thành công — phân biệt pre-fetch vs rotation thật.
   const hasFirstLicenseRef = useRef(false);
+  // Set các KID được request do KEY ROTATION thật (không phải pre-fetch startup).
+  const rotationKidsRef = useRef<Set<string>>(new Set());
+  // KID được log chi tiết [1]-[4] — chỉ response của KID này mới show [5][6].
+  const primaryKidRef = useRef<string | null>(null);
   // Ánh xạ license-uri → device private key đang chờ decrypt response.
   const pendingDecryptKeyRef = useRef<Map<string, CryptoKey>>(new Map());
   // content_id hiện tại (set khi load(), dùng trong license request filter).
@@ -616,15 +619,25 @@ export function useShakaPlayer(
           }
 
           const nonce = crypto.randomUUID();
-          pushLog('info', 'license',
-            `[3] Nonce: ${nonce.slice(0, 8)}… generated (UUID single-use, chống replay attack)`);
-
-          // Key rotation chỉ log khi đã có license trước đó (không phải pre-fetch)
           const prevKid = activeKidRef.current;
-          if (prevKid && prevKid !== kidHex && hasFirstLicenseRef.current) {
+          const isFirstRequest = prevKid === null;
+          const isRotation = !isFirstRequest && hasFirstLicenseRef.current;
+
+          if (isFirstRequest) {
+            // Lần đầu — log đầy đủ, đánh dấu đây là primary KID
+            primaryKidRef.current = kidHex;
+            pushLog('info', 'license',
+              `[3] Nonce: ${nonce.slice(0, 8)}… generated (UUID single-use, chống replay attack)`);
+            pushLog('info', 'license',
+              `[4] License REQ → POST /license · KID=${kidHex.slice(0, 8)}… · device pubkey đính kèm (server sẽ RSA-OAEP wrap)`);
+          } else if (isRotation) {
+            // Key rotation thật khi đang phát — đánh dấu và log
+            rotationKidsRef.current.add(kidHex);
             pushLog('warn', 'license',
-              `[KEY ROTATION] Period đổi · KID ${prevKid.slice(0, 8)}… → ${kidHex.slice(0, 8)}… · yêu cầu license mới`);
+              `[KEY ROTATION] Period đổi · KID ${prevKid!.slice(0, 8)}… → ${kidHex.slice(0, 8)}… · yêu cầu license mới`);
           }
+          // else: pre-fetch period khác lúc startup — không log để tránh spam
+
           activeKidRef.current = kidHex;
 
           const customBody = JSON.stringify({
@@ -648,8 +661,6 @@ export function useShakaPlayer(
           // khi nhiều request cùng KID khác nhau đều đến cùng 1 URI /license
           pendingDecryptKeyRef.current.set(kidHex, device.privateKey);
           pendingRequestBytesRef.current.set(kidHex, encoded.byteLength);
-          pushLog('info', 'license',
-            `[4] License REQ → POST /license · KID=${kidHex.slice(0, 8)}… · ${encoded.byteLength}B · device pubkey đính kèm (server sẽ RSA-OAEP wrap)`);
 
         } catch (err) {
           pushLog('error', 'license', `[DRM] Request filter: ${(err as Error).message}`);
@@ -765,17 +776,26 @@ export function useShakaPlayer(
         const keyBits = contentKeyBuf.byteLength * 8;
         const ttlSec  = lic.expires_at - Math.floor(Date.now() / 1000);
         const ttlMin  = Math.round(ttlSec / 60);
-        if (!hasFirstLicenseRef.current) {
-          // License đầu tiên — đây là lúc phim bắt đầu phát được
+        if (lic.kid === primaryKidRef.current && !hasFirstLicenseRef.current) {
+          // Response của primary KID ([4] đã log) — hiển thị đầy đủ [5][6]
           hasFirstLicenseRef.current = true;
+          const periodIdx = ['915c46b4','4440f98f','f29da191','ecc458ee'].indexOf(lic.kid.slice(0, 8));
+          const periodNum = periodIdx >= 0 ? periodIdx + 1 : 1;
           pushLog('info', 'license',
             `[5] RSA-OAEP decrypt ✓ · Content key ${keyBits}-bit · TTL ${ttlMin}min · exp ${new Date(lic.expires_at * 1000).toLocaleTimeString()}`);
           pushLog('info', 'license',
-            `[6] CDM ✓ · ClearKey JSON → browser CDM · AES-128-CTR active · KID=${lic.kid.slice(0, 8)}…`);
-        } else {
-          // License cho period tiếp theo (key rotation)
+            `[6] CDM ✓ · ClearKey JSON → browser CDM · AES-128-CTR active · KID=${lic.kid.slice(0, 8)}… · Period ${periodNum}`);
+        } else if (rotationKidsRef.current.has(lic.kid)) {
+          // Response của KEY ROTATION thật trong lúc phát
+          rotationKidsRef.current.delete(lic.kid);
           pushLog('info', 'license',
-            `[KEY ROTATION ✓] Content key ${keyBits}-bit mới · KID=${lic.kid.slice(0, 8)}… · TTL ${ttlMin}min · AES-128-CTR active`);
+            `[KEY ROTATION ✓] Content key ${keyBits}-bit · KID=${lic.kid.slice(0, 8)}… · TTL ${ttlMin}min · AES-128-CTR active`);
+        } else {
+          // Pre-fetch các period khác lúc startup — ghi gọn
+          const periodIdx = ['915c46b4','4440f98f','f29da191','ecc458ee'].indexOf(lic.kid.slice(0, 8));
+          const periodNum = periodIdx >= 0 ? periodIdx + 1 : '?';
+          pushLog('info', 'license',
+            `(pre-fetch) Period ${periodNum} key ready · KID=${lic.kid.slice(0, 8)}…`);
         }
       } catch (err) {
         pushLog('error', 'license', `[ClearKey] Response: ${(err as Error).message}`);
@@ -1031,6 +1051,8 @@ export function useShakaPlayer(
       setLogs([]);
       activeKidRef.current = null;
       hasFirstLicenseRef.current = false;
+      primaryKidRef.current = null;
+      rotationKidsRef.current.clear();
       setDrmInfo({
         ...EMPTY_DRM_INFO,
         keyIds: manifest.keyId ? [manifest.keyId] : [],
