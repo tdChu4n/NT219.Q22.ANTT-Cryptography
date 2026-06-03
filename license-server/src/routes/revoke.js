@@ -6,12 +6,12 @@
  * Body: { session_id: string }   — Admin thu hồi session cụ thể
  *    hoặc { user_id: string }    — Admin thu hồi toàn bộ session của user
  *
- * Yêu cầu: JWT RS256 với role = 'admin'
+ * Yêu cầu: JWT ES256 với role = 'admin'
  */
 
 const express = require('express');
 const router  = express.Router();
-const { verifyRS256 } = require('../auth/jwt');
+const { verifyES256 } = require('../auth/jwt');
 
 let _db = null;
 function setDb(db) { _db = db; }
@@ -21,7 +21,7 @@ function requireAdmin(req, res, next) {
     if (!header?.startsWith('Bearer '))
         return res.status(401).json({ error: 'Unauthorized: Thiếu token' });
 
-    const { valid, decoded, error } = verifyRS256(header.split(' ')[1]);
+    const { valid, decoded, error } = verifyES256(header.split(' ')[1]);
     if (!valid)
         return res.status(401).json({ error: `Unauthorized: ${error}` });
     if (decoded.role !== 'admin')

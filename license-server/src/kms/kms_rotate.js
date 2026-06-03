@@ -11,7 +11,7 @@
  *  6. Trả về report kết quả
  *
  * Endpoint: POST /kms/rotate
- * Header: Authorization: Bearer <JWT RS256> (role admin)
+ * Header: Authorization: Bearer <JWT ES256> (role admin)
  */
 
 'use strict';
@@ -19,7 +19,7 @@
 const express = require('express');
 const crypto  = require('crypto');
 const router  = express.Router();
-const { verifyRS256 } = require('../auth/jwt');
+const { verifyES256 } = require('../auth/jwt');
 
 const { getMasterKey, setMasterKey } = require('./kms');
 
@@ -55,13 +55,13 @@ function aesDecrypt(masterKey, key_enc_b64, iv_b64, auth_tag_b64) {
 // POST /kms/rotate — chỉ admin mới gọi được
 // ------------------------------------------------------------------
 router.post('/rotate', async (req, res) => {
-    // 1. Xác thực JWT (RS256), kiểm tra role admin
+    // 1. Xác thực JWT (ES256), kiểm tra role admin
     const authHeader = req.headers['authorization'];
     if (!authHeader?.startsWith('Bearer ')) {
         return res.status(401).json({ error: 'Unauthorized: Missing token' });
     }
 
-    const { valid, decoded, error: jwtErr } = verifyRS256(authHeader.split(' ')[1]);
+    const { valid, decoded, error: jwtErr } = verifyES256(authHeader.split(' ')[1]);
     if (!valid) return res.status(401).json({ error: `Unauthorized: ${jwtErr}` });
     if (decoded.role !== 'admin') {
         return res.status(403).json({ error: 'Forbidden: Chỉ admin mới được rotate Master Key' });

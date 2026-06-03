@@ -13,7 +13,7 @@
 
 const express  = require('express');
 const router   = express.Router();
-const { verifyRS256 } = require('../auth/jwt');
+const { verifyES256 } = require('../auth/jwt');
 const { encryptKey }  = require('../crypto/rsa_oaep');
 const { consumeNonce, issueLicense } = require('../kms/kms');
 
@@ -62,7 +62,7 @@ router.post('/', async (req, res) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const { valid, decoded, error: jwtError } = verifyRS256(token);
+    const { valid, decoded, error: jwtError } = verifyES256(token);
     if (!valid) {
         return res.status(401).json({ error: `Unauthorized: ${jwtError}` });
     }

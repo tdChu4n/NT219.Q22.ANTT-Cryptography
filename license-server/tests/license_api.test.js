@@ -18,7 +18,7 @@ const cors    = require('cors');
 // ---------------------------------------------------------------
 // Khởi tạo app test (không bind port thật)
 // ---------------------------------------------------------------
-const { issueRS256, issueHS256 } = require('../src/auth/jwt');
+const { issueES256, issueHS256 } = require('../src/auth/jwt');
 const { encryptKey, generateDeviceKeyPair } = require('../src/crypto/rsa_oaep');
 const { router: licenseRouter, setDb }      = require('../src/routes/license');
 const kmsRotateRouter                       = require('../src/kms/kms_rotate');
@@ -33,7 +33,7 @@ function buildApp(db = null) {
     app.post('/api/auth/login', (req, res) => {
         const { username } = req.body;
         if (!username) return res.status(400).json({ error: 'Missing username' });
-        const token = issueRS256({
+        const token = issueES256({
             userId: username,
             role: 'premium',
             entitlements: ['movie_123'],
@@ -98,7 +98,7 @@ describe('GET / — Health Check', () => {
 describe('POST /api/auth/login', () => {
     const app = buildApp();
 
-    test('Cấp RS256 JWT khi có username', async () => {
+    test('Cấp ES256 JWT khi có username', async () => {
         const res = await request(app)
             .post('/api/auth/login')
             .send({ username: 'alice' });
@@ -190,8 +190,8 @@ describe('POST /api/license — Auth failures', () => {
         expect(res.status).toBe(401);
     });
 
-    test('Token RS256 bị tamper → 401', async () => {
-        const token   = issueRS256({ userId: 'bob', entitlements: ['movie_123'] });
+    test('Token ES256 bị tamper → 401', async () => {
+        const token   = issueES256({ userId: 'bob', entitlements: ['movie_123'] });
         const tampered = token.slice(0, -4) + 'XXXX';
         const res = await request(app)
             .post('/api/license')
@@ -200,8 +200,8 @@ describe('POST /api/license — Auth failures', () => {
         expect(res.status).toBe(401);
     });
 
-    test('Token RS256 hết hạn → 401', async () => {
-        const expiredToken = issueRS256({ userId: 'bob', entitlements: ['movie_123'] }, '1ms');
+    test('Token ES256 hết hạn → 401', async () => {
+        const expiredToken = issueES256({ userId: 'bob', entitlements: ['movie_123'] }, '1ms');
         await new Promise(r => setTimeout(r, 20));
         const res = await request(app)
             .post('/api/license')
@@ -258,7 +258,7 @@ describe('POST /api/license — Entitlement (PoC mode)', () => {
     });
 
     test('User không có entitlement cho content_id → 403', async () => {
-        const token = issueRS256({
+        const token = issueES256({
             userId: 'free_user',
             role: 'free',
             entitlements: ['movie_999'], // không có movie_123
@@ -272,7 +272,7 @@ describe('POST /api/license — Entitlement (PoC mode)', () => {
     });
 
     test('User có entitlement → 200', async () => {
-        const token = issueRS256({
+        const token = issueES256({
             userId: 'premium_user',
             role: 'premium',
             entitlements: ['movie_123'],
@@ -385,7 +385,7 @@ describe('POST /api/license — MongoDB mode (mock db)', () => {
 
     test('MongoDB: có entitlement + key → 200', async () => {
         const app   = buildApp(buildMockDb());
-        const token = issueRS256({ userId: 'db_user', role: 'premium',
+        const token = issueES256({ userId: 'db_user', role: 'premium',
                                    entitlements: ['movie_123'] });
         const res   = await request(app)
             .post('/api/license')
@@ -397,7 +397,7 @@ describe('POST /api/license — MongoDB mode (mock db)', () => {
 
     test('MongoDB: không có entitlement → 403', async () => {
         const app   = buildApp(buildMockDb({ hasEntitlement: false }));
-        const token = issueRS256({ userId: 'db_user', role: 'premium',
+        const token = issueES256({ userId: 'db_user', role: 'premium',
                                    entitlements: ['movie_123'] });
         const res   = await request(app)
             .post('/api/license')
@@ -409,7 +409,7 @@ describe('POST /api/license — MongoDB mode (mock db)', () => {
 
     test('MongoDB: entitlement hết hạn → 403', async () => {
         const app   = buildApp(buildMockDb({ entitlementExpired: true }));
-        const token = issueRS256({ userId: 'db_user', role: 'premium',
+        const token = issueES256({ userId: 'db_user', role: 'premium',
                                    entitlements: ['movie_123'] });
         const res   = await request(app)
             .post('/api/license')
@@ -426,7 +426,7 @@ describe('POST /api/license — MongoDB mode (mock db)', () => {
             { device_id: 'device_B', expires_at: futureDate },
         ];
         const app   = buildApp(buildMockDb({ activeSessions }));
-        const token = issueRS256({ userId: 'db_user', role: 'premium',
+        const token = issueES256({ userId: 'db_user', role: 'premium',
                                    entitlements: ['movie_123'] });
         const res   = await request(app)
             .post('/api/license')
@@ -443,7 +443,7 @@ describe('POST /api/license — MongoDB mode (mock db)', () => {
             { device_id: 'device_B', expires_at: futureDate },
         ];
         const app   = buildApp(buildMockDb({ activeSessions }));
-        const token = issueRS256({ userId: 'db_user', role: 'premium',
+        const token = issueES256({ userId: 'db_user', role: 'premium',
                                    entitlements: ['movie_123'] });
         const res   = await request(app)
             .post('/api/license')
@@ -454,7 +454,7 @@ describe('POST /api/license — MongoDB mode (mock db)', () => {
 
     test('MongoDB: không tìm thấy content key → 404', async () => {
         const app   = buildApp(buildMockDb({ keyFound: false }));
-        const token = issueRS256({ userId: 'db_user', role: 'premium',
+        const token = issueES256({ userId: 'db_user', role: 'premium',
                                    entitlements: ['movie_123'] });
         const res   = await request(app)
             .post('/api/license')
@@ -492,7 +492,7 @@ describe('POST /kms/rotate — Auth & Role', () => {
     });
 
     test('Role không phải admin → 403', async () => {
-        const token = issueRS256({ userId: 'bob', role: 'premium' });
+        const token = issueES256({ userId: 'bob', role: 'premium' });
         const res = await request(app)
             .post('/kms/rotate')
             .set('Authorization', `Bearer ${token}`);
@@ -501,7 +501,7 @@ describe('POST /kms/rotate — Auth & Role', () => {
     });
 
     test('Admin role, PoC mode → 200 + rotation report', async () => {
-        const token = issueRS256({ userId: 'admin_user', role: 'admin' });
+        const token = issueES256({ userId: 'admin_user', role: 'admin' });
         const res = await request(app)
             .post('/kms/rotate')
             .set('Authorization', `Bearer ${token}`);

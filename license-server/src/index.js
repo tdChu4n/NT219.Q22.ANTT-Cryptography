@@ -150,13 +150,13 @@ async function connectMongo() {
 // ------------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------------
-const { issueRS256, verifyRS256 } = require('./auth/jwt');
+const { issueES256, verifyES256 } = require('./auth/jwt');
 
 function requireAuth(req, res, next) {
     const header = req.headers['authorization'];
     if (!header?.startsWith('Bearer '))
         return res.status(401).json({ error: 'Unauthorized: Thiếu token' });
-    const { valid, decoded, error } = verifyRS256(header.split(' ')[1]);
+    const { valid, decoded, error } = verifyES256(header.split(' ')[1]);
     if (!valid) return res.status(401).json({ error: `Unauthorized: ${error}` });
     req.user = decoded;
     next();
@@ -202,7 +202,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
             created_at: new Date(),
         });
 
-        const token = issueRS256(
+        const token = issueES256(
             { userId: user_id, email, name: displayName, role: 'user', entitlements: ['movie_123'] },
             '24h'
         );
@@ -234,7 +234,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
             }).toArray();
             const entitlements = entDocs.map(e => e.content_id);
 
-            const token = issueRS256(
+            const token = issueES256(
                 { userId: user.user_id, email: user.email, name: user.name || '', role: user.role || 'user', entitlements },
                 '24h'
             );
@@ -247,7 +247,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 
     // PoC fallback
     if (email === 'demo@nt219.local' && password === 'demo123') {
-        const token = issueRS256(
+        const token = issueES256(
             { userId: 'demo_user', email, name: 'Demo User', role: 'premium', entitlements: ['movie_123'] },
             '24h'
         );
